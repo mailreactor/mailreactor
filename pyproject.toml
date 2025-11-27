@@ -1,0 +1,49 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mailreactor"
+version = "0.1.0"
+description = "Headless email client with REST API"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "Hans Stockhausen", email = "hc@vst.io"},
+]
+dependencies = [
+    # Dependencies added as implementation progresses
+    # Will add FastAPI, IMAP/SMTP clients, etc. when building features
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "ruff",
+    # Additional dev dependencies added as Sprint 0 tasks require them:
+    # - pytest-asyncio (when async tests needed)
+    # - pytest-cov (Sprint 0 Task #2: TDD Infrastructure) 
+    # - mypy (Sprint 0 Task #2: TDD Infrastructure)
+    # - pre-commit (Sprint 0 Task #2: TDD Infrastructure)
+    # - detect-secrets (Sprint 0 Task #5: Security Scanning)
+    # - pytest-benchmark (Sprint 0 Task #6: Performance Benchmarks)
+]
+
+# [project.scripts]
+# mailreactor = "mailreactor.cli:app"  # Added when CLI module implemented
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mailreactor"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
