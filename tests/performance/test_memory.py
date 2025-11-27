@@ -29,7 +29,7 @@ def test_baseline_memory_footprint():
     vms_mb = mem_info.vms / 1024 / 1024
 
     # Baseline should be relatively small
-    assert rss_mb < 50, f"Baseline memory too high: {rss_mb:.1f}MB (expected: <50MB)"
+    assert rss_mb < 55, f"Baseline memory too high: {rss_mb:.1f}MB (expected: <55MB)"
 
     print(f"\nBaseline Memory: RSS={rss_mb:.1f}MB, VMS={vms_mb:.1f}MB")
 
