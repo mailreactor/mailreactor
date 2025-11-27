@@ -13,23 +13,24 @@ authors = [
     {name = "Hans Stockhausen", email = "hc@vst.io"},
 ]
 dependencies = [
-    # Dependencies added as implementation progresses
-    # Will add FastAPI, IMAP/SMTP clients, etc. when building features
+    "imapclient>=3.0.0",  # Sprint 0 Task #3: IMAP client for E2E tests (will be used in Epic 2)
+    # Additional dependencies added as implementation progresses
+    # Will add FastAPI, aiosmtplib, etc. when building features
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
+    "pytest-asyncio",    # Sprint 0 Task #4: Async test support
+    "pytest-cov",        # Sprint 0 Task #2: Coverage enforcement
+    "pytest-benchmark",  # Sprint 0 Task #6: Performance benchmarks
+    "httpx",             # Sprint 0 Task #4: FastAPI TestClient
+    "psutil",            # Sprint 0 Task #6: Memory profiling
     "ruff",
-    "pre-commit",      # Sprint 0 Task #2.3: Pre-commit hooks
-    "detect-secrets",  # Sprint 0 Task #2.3: Secret detection in hooks
+    "pre-commit",        # Sprint 0 Task #2.3: Pre-commit hooks
+    "detect-secrets",    # Sprint 0 Task #2.3: Secret detection in hooks
+    # "safety",          # Sprint 0 Task #5: Requires auth - commented out, use pip-audit in future
     "mypy",
-    "pytest-cov",
-    # Additional dev dependencies added as Sprint 0 tasks require them:
-    # - pytest-asyncio (when async tests needed)
-    # - pytest-cov (Sprint 0 Task #2: TDD Infrastructure) 
-    # - mypy (Sprint 0 Task #2: TDD Infrastructure)
-    # - pytest-benchmark (Sprint 0 Task #6: Performance Benchmarks)
 ]
 
 # [project.scripts]
