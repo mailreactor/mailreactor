@@ -41,21 +41,29 @@ def main():
         
         # 4. Check dev tools (if in venv)
         if sys.prefix != sys.base_prefix:  # In venv
-            for tool in ["pytest", "ruff"]:
+            for tool in ["pytest", "ruff", "pre-commit"]:
                 if shutil.which(tool):
                     print(f"✓ {tool} available")
                 else:
-                    print(f"❌ {tool} missing")
+                    print(f"❌ {tool} missing - run: uv pip install -e \".[dev]\"")
                     sys.exit(1)
         else:
             print("❌ Not in virtual environment - run: source .venv/bin/activate")
             sys.exit(1)
     else:
-        print("❌ No .venv found - run setup steps first")
+        print("❌ No .venv found - run quick start steps first")
+        sys.exit(1)
+    
+    # 5. Check pre-commit hooks installed
+    hooks_path = Path(".git/hooks/pre-commit")
+    if hooks_path.exists():
+        print(f"✓ Pre-commit hooks installed - try with: pre-commit run --all-files --show-diff-on-failure")
+    else:
+        print("❌ Pre-commit hooks NOT installed - run: pre-commit install")
         sys.exit(1)
     
     print()
-    print("✅ Environment verification complete!")
+    print("Environment verification complete!")
 
 if __name__ == "__main__":
     main()
