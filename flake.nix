@@ -30,6 +30,7 @@
               echo "  uv venv --python $(which python)"
               echo "  source .venv/bin/activate" 
               echo "  uv pip install -e \".[dev]\""
+              echo "  python verify-setup.sh"
               echo
             fi
           '';

@@ -12,18 +12,24 @@ git clone <repository-url>
 cd mailreactor
 direnv allow
 # Follow quickstart instructions shown in terminal
+
+# Verify setup:
+python verify-setup.sh
 ```
 
 ## Manual Setup (Windows/No-Nix)
 
-**Prerequisites:** Python 3.10+
+**Prerequisites:** pip
 
 **Setup:**
 ```bash
 git clone <repository-url>  
 cd mailreactor
 pip install uv
-uv venv
-source .venv/bin/activate    # Windows: .venv\Scripts\activate
+uv venv --python python3.10
+.venv\Scripts\activate      # Linux: source .venv/bin/activate
 uv pip install -e ".[dev]"
+
+# Verify setup:
+python verify-setup.sh
 ```
