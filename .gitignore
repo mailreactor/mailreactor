@@ -191,9 +191,6 @@ cython_debug/
 # Ruff stuff:
 .ruff_cache/
 
-# Nix
-.direnv/
-
 # PyPI configuration file
 .pypirc
 
