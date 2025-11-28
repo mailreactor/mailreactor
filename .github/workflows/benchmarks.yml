@@ -72,9 +72,9 @@ jobs:
             
             comment += '\n*Benchmarks run on Python 3.10 (ubuntu-latest)*';
             
-            github.rest.issues.createComment({
+            await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
-              repo: context.repo.name,
+              repo: context.repo.repo,
               body: comment
             });
