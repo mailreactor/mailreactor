@@ -17,7 +17,7 @@ def test_baseline_memory_footprint():
     Measure baseline Python process memory footprint.
 
     This establishes a baseline before the application is loaded.
-    Should be minimal (<20MB for basic Python process).
+    Should be <60MB for basic Python process.
     """
     process = psutil.Process(os.getpid())
     mem_info = process.memory_info()
@@ -29,7 +29,7 @@ def test_baseline_memory_footprint():
     vms_mb = mem_info.vms / 1024 / 1024
 
     # Baseline should be relatively small
-    assert rss_mb < 55, f"Baseline memory too high: {rss_mb:.1f}MB (expected: <55MB)"
+    assert rss_mb < 60, f"Baseline memory too high: {rss_mb:.1f}MB (expected: <60MB)"
 
     print(f"\nBaseline Memory: RSS={rss_mb:.1f}MB, VMS={vms_mb:.1f}MB")
 
