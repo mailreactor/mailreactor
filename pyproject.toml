@@ -13,12 +13,20 @@ authors = [
     {name = "Hans Stockhausen", email = "hc@vst.io"},
 ]
 dependencies = [
-    "imapclient>=3.0.0",  # Sprint 0 Task #3: IMAP client for E2E tests (will be used in Epic 2)
-    # Additional dependencies added as implementation progresses
-    # Will add FastAPI, aiosmtplib, etc. when building features
+    # Default: Full experience (pipx install mailreactor → mailreactor start works!)
+    "imapclient>=3.0.0",   # BSD-3 licensed IMAP client (sync, wrapped with executor)
+    "aiosmtplib>=3.0.0",   # MIT licensed async SMTP client
+    "fastapi>=0.122.0",    # Modern async web framework
+    "uvicorn[standard]",   # ASGI server
+    "pydantic>=2.0.0",     # Data validation (bundled with FastAPI)
+    "pydantic-settings",   # Environment-based configuration
+    "typer>=0.20.0",       # CLI framework
+    "structlog",           # Structured logging
 ]
 
 [project.optional-dependencies]
+
+# Development dependencies
 dev = [
     "pytest>=7.0",
     "pytest-asyncio",    # Sprint 0 Task #4: Async test support
@@ -33,8 +41,10 @@ dev = [
     "mypy",
 ]
 
-# [project.scripts]
-# mailreactor = "mailreactor.cli:app"  # Added when CLI module implemented
+
+
+[project.scripts]
+mailreactor = "mailreactor.cli:app"  # CLI entry point (to be implemented in Sprint 1)
 
 [tool.ruff]
 line-length = 100
