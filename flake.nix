@@ -22,16 +22,20 @@
             echo
             echo "Mail Reactor Development Environment"
             echo "$(python --version) | $(uv --version)"
-            echo
             
             # Only show quick start if no virtual env exists (first time)
             if [ ! -d .venv ]; then
+              echo
               echo "Quick start:"
               echo "  uv venv --python $(which python)"
               echo "  source .venv/bin/activate" 
               echo "  uv pip install -e \".[dev]\""
               echo "  python verify-setup.sh"
               echo
+            else
+              echo "Enable venv with: source .venv/bin/activate" 
+              echo "Manual pre-commit check with: pre-commit run --all-files --show-diff-on-failure"
+              echo 
             fi
           '';
         };

@@ -7,7 +7,7 @@ Uses Python mocks (unittest.mock) for fast, isolated testing.
 
 import pytest
 from unittest.mock import AsyncMock, Mock, MagicMock
-from httpx import AsyncClient
+from httpx import AsyncClient, ASGITransport
 from typing import AsyncGenerator, Dict, Any
 
 
@@ -21,8 +21,8 @@ async def api_client() -> AsyncGenerator[AsyncClient, None]:
     """
     FastAPI test client for integration tests.
 
-    Uses httpx.AsyncClient with in-memory HTTP (no network calls).
-    Import app only when fixture is used to avoid circular dependencies.
+    Uses httpx.AsyncClient with ASGITransport for in-memory HTTP testing.
+    No network calls - pure ASGI transport.
 
     Usage:
         async def test_health(api_client):
@@ -33,7 +33,8 @@ async def api_client() -> AsyncGenerator[AsyncClient, None]:
     try:
         from mailreactor.main import app
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
             yield client
     except ImportError:
         # If app doesn't exist yet, provide a mock client
