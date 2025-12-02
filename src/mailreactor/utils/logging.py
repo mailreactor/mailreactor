@@ -4,9 +4,6 @@ This module provides a single internal pipeline with dual renderers:
 - Console renderer (default): Human-readable colored output via rich integration
 - JSON renderer (opt-in): Machine-readable structured logs for log aggregators
 
-All logs use structlog's structured format internally with shared processors
-for timestamps, log levels, stack info, and exception formatting.
-
 Usage:
     # Configure at application startup
     configure_logging(json_format=False, log_level="INFO")
@@ -28,7 +25,6 @@ import sys
 from typing import Any
 
 import structlog
-from rich.console import Console
 from structlog.types import EventDict, WrappedLogger
 
 
@@ -41,17 +37,6 @@ SENSITIVE_FIELDS = {
     "authorization",
     "apikey",
     "api-key",
-}
-
-# Emoji mapping for critical events
-EMOJI_MAP = {
-    "server_started": "✓",
-    "server_ready": "✓",
-    "account_connected": "✓",
-    "server_startup_failed": "✗",
-    "connection_failed": "✗",
-    "auth_warning": "⚠",
-    "auth_disabled": "⚠",
 }
 
 
@@ -74,118 +59,11 @@ def _filter_sensitive_data(
     return event_dict
 
 
-class ConsoleRenderer:
-    """Console renderer with rich integration for colored, human-readable output.
-
-    Formats log entries as: [LEVEL] HH:MM:SS message key=value key=value
-
-    Color scheme:
-    - INFO: Green
-    - WARNING: Yellow
-    - ERROR/CRITICAL: Red
-    - DEBUG: Blue
-
-    Minimal emoji support for specific lifecycle events (✓, ✗, ⚠).
-    """
-
-    def __init__(self) -> None:
-        """Initialize console renderer with rich Console."""
-        self.console = Console(file=sys.stderr, force_terminal=True)
-
-        # Color mapping for log levels
-        self.level_colors = {
-            "debug": "blue",
-            "info": "green",
-            "warning": "yellow",
-            "error": "red",
-            "critical": "red bold",
-        }
-
-    def __call__(self, logger: WrappedLogger, method_name: str, event_dict: EventDict) -> str:
-        """Render event dictionary as colored console output.
-
-        Args:
-            logger: The wrapped logger instance
-            method_name: The name of the method called (e.g., "info", "error")
-            event_dict: The event dictionary to render
-
-        Returns:
-            Formatted log string (rich will handle the actual colorization)
-        """
-        # Extract core fields
-        timestamp = event_dict.pop("timestamp", "")
-        level = event_dict.pop("level", "info").lower()
-        event = event_dict.pop("event", "")
-
-        # Format timestamp (extract time portion from ISO format)
-        if timestamp and "T" in timestamp:
-            # ISO format: 2025-11-28T10:30:45.123456Z
-            time_part = timestamp.split("T")[1].split(".")[0]  # HH:MM:SS
-        else:
-            time_part = timestamp
-
-        # Get color for level
-        color = self.level_colors.get(level, "white")
-
-        # Format level (uppercase, padded to 5 chars for alignment)
-        level_str = f"[{level.upper():5s}]"
-
-        # Add emoji if this is a special event
-        emoji = ""
-        if event in EMOJI_MAP:
-            emoji = f" {EMOJI_MAP[event]}"
-
-        # Build key=value pairs for remaining context
-        context_parts = []
-        for key, value in event_dict.items():
-            # Skip internal structlog fields
-            if key.startswith("_"):
-                continue
-
-            # Format value appropriately
-            if isinstance(value, str):
-                # Quote strings with spaces or special chars
-                if " " in value or "=" in value:
-                    formatted_value = f'"{value}"'
-                else:
-                    formatted_value = value
-            else:
-                formatted_value = str(value)
-
-            context_parts.append(f"{key}={formatted_value}")
-
-        context_str = " ".join(context_parts)
-
-        # Build final message
-        if context_str:
-            message = f"{level_str} {time_part} {event}{emoji} {context_str}"
-        else:
-            message = f"{level_str} {time_part} {event}{emoji}"
-
-        # Output with color (rich.console handles ANSI codes)
-        self.console.print(message, style=color, highlight=False)
-
-        # Return empty string since we've already printed
-        return ""
-
-
-def _create_console_renderer() -> ConsoleRenderer:
-    """Create console renderer instance.
-
-    Returns:
-        Configured ConsoleRenderer instance
-    """
-    return ConsoleRenderer()
-
-
 def configure_logging(json_format: bool = False, log_level: str = "INFO") -> None:
-    """Configure structlog with single pipeline and dual renderers.
-
-    This function sets up structured logging with a shared processor chain
-    and either console (default) or JSON renderer for output.
+    """Configure structlog with console or JSON renderer.
 
     Args:
-        json_format: If True, use JSON renderer for production. If False, use console renderer.
+        json_format: If True, use JSON renderer. If False, use console renderer.
         log_level: Minimum log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
 
     Examples:
@@ -204,27 +82,35 @@ def configure_logging(json_format: bool = False, log_level: str = "INFO") -> Non
 
     # Shared processors (before renderer)
     shared_processors: list[Any] = [
-        structlog.contextvars.merge_contextvars,  # Include bound context
-        structlog.stdlib.add_log_level,  # Add log level to event dict
-        structlog.stdlib.add_logger_name,  # Add logger name to event dict
-        structlog.processors.TimeStamper(fmt="iso", utc=True),  # ISO 8601 timestamps
-        structlog.processors.StackInfoRenderer(),  # Render stack traces
-        structlog.processors.format_exc_info,  # Format exceptions
-        structlog.processors.UnicodeDecoder(),  # Decode unicode strings
-        _filter_sensitive_data,  # Redact sensitive fields
+        structlog.contextvars.merge_contextvars,
+        structlog.stdlib.add_log_level,
+        structlog.stdlib.add_logger_name,
+        structlog.processors.TimeStamper(fmt="iso", utc=True),
+        structlog.processors.StackInfoRenderer(),
+        _filter_sensitive_data,
     ]
 
     # Choose renderer based on configuration
     if json_format:
         # Production: JSON Lines format
-        renderer = structlog.processors.JSONRenderer()
+        # Note: format_exc_info must be absent for JSON to work with ConsoleRenderer
+        processors = shared_processors + [
+            structlog.processors.format_exc_info,
+            structlog.processors.JSONRenderer(),
+        ]
     else:
         # Development: Rich-enhanced console output
-        renderer = _create_console_renderer()
+        # ConsoleRenderer handles exceptions itself, so don't use format_exc_info
+        processors = shared_processors + [
+            structlog.dev.ConsoleRenderer(
+                colors=True,
+                exception_formatter=structlog.dev.rich_traceback,
+            ),
+        ]
 
     # Configure structlog
     structlog.configure(
-        processors=shared_processors + [renderer],
+        processors=processors,
         wrapper_class=structlog.stdlib.BoundLogger,
         context_class=dict,
         logger_factory=structlog.stdlib.LoggerFactory(),

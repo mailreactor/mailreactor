@@ -1,24 +1,21 @@
 """Unit tests for structured logging configuration.
 
 Tests cover:
-- Console renderer formatting and colors
-- JSON renderer output
-- Shared processors (timestamps, log levels, etc.)
+- Logging configuration
 - Context binding and propagation
 - Sensitive data redaction
 - Log level filtering
+- JSON vs console output
 """
 
 import json
 from io import StringIO
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import structlog
 
 from mailreactor.utils.logging import (
-    EMOJI_MAP,
     SENSITIVE_FIELDS,
-    ConsoleRenderer,
     bind_context,
     clear_context,
     configure_logging,
@@ -26,148 +23,19 @@ from mailreactor.utils.logging import (
 )
 
 
-class TestConsoleRenderer:
-    """Test suite for ConsoleRenderer."""
-
-    def test_console_renderer_formats_basic_message(self) -> None:
-        """Test that console renderer formats basic log messages."""
-        renderer = ConsoleRenderer()
-
-        event_dict = {
-            "timestamp": "2025-11-28T10:30:45.123456Z",
-            "level": "info",
-            "event": "test_message",
-        }
-
-        # Mock console to capture output
-        with patch.object(renderer.console, "print") as mock_print:
-            renderer(Mock(), "info", event_dict)
-
-            # Verify print was called
-            assert mock_print.called
-            call_args = mock_print.call_args
-            message = call_args[0][0]
-
-            # Verify format: [LEVEL] HH:MM:SS event
-            assert "[INFO ]" in message
-            assert "10:30:45" in message
-            assert "test_message" in message
-
-    def test_console_renderer_includes_context(self) -> None:
-        """Test that console renderer includes context as key=value pairs."""
-        renderer = ConsoleRenderer()
-
-        event_dict = {
-            "timestamp": "2025-11-28T10:30:45.123456Z",
-            "level": "info",
-            "event": "email_sent",
-            "recipient": "user@example.com",
-            "message_id": "abc123",
-        }
-
-        with patch.object(renderer.console, "print") as mock_print:
-            renderer(Mock(), "info", event_dict)
-
-            message = mock_print.call_args[0][0]
-
-            # Verify context key=value pairs
-            assert "recipient=user@example.com" in message
-            assert "message_id=abc123" in message
-
-    def test_console_renderer_adds_emoji_for_special_events(self) -> None:
-        """Test that console renderer adds emoji for lifecycle events."""
-        renderer = ConsoleRenderer()
-
-        for event_name, emoji in EMOJI_MAP.items():
-            event_dict = {
-                "timestamp": "2025-11-28T10:30:45.123456Z",
-                "level": "info",
-                "event": event_name,
-            }
-
-            with patch.object(renderer.console, "print") as mock_print:
-                renderer(Mock(), "info", event_dict)
-
-                message = mock_print.call_args[0][0]
-                assert emoji in message
-
-    def test_console_renderer_uses_correct_colors(self) -> None:
-        """Test that console renderer uses correct colors for log levels."""
-        renderer = ConsoleRenderer()
-
-        levels_and_colors = [
-            ("debug", "blue"),
-            ("info", "green"),
-            ("warning", "yellow"),
-            ("error", "red"),
-            ("critical", "red bold"),
-        ]
-
-        for level, expected_color in levels_and_colors:
-            event_dict = {
-                "timestamp": "2025-11-28T10:30:45.123456Z",
-                "level": level,
-                "event": "test_event",
-            }
-
-            with patch.object(renderer.console, "print") as mock_print:
-                renderer(Mock(), level, event_dict)
-
-                # Verify style parameter
-                call_kwargs = mock_print.call_args[1]
-                assert call_kwargs["style"] == expected_color
-
-    def test_console_renderer_quotes_strings_with_spaces(self) -> None:
-        """Test that console renderer quotes string values with spaces."""
-        renderer = ConsoleRenderer()
-
-        event_dict = {
-            "timestamp": "2025-11-28T10:30:45.123456Z",
-            "level": "info",
-            "event": "test_event",
-            "message": "This has spaces",
-        }
-
-        with patch.object(renderer.console, "print") as mock_print:
-            renderer(Mock(), "info", event_dict)
-
-            message = mock_print.call_args[0][0]
-            assert 'message="This has spaces"' in message
-
-    def test_console_renderer_skips_internal_fields(self) -> None:
-        """Test that console renderer skips internal structlog fields."""
-        renderer = ConsoleRenderer()
-
-        event_dict = {
-            "timestamp": "2025-11-28T10:30:45.123456Z",
-            "level": "info",
-            "event": "test_event",
-            "_internal_field": "should_not_appear",
-        }
-
-        with patch.object(renderer.console, "print") as mock_print:
-            renderer(Mock(), "info", event_dict)
-
-            message = mock_print.call_args[0][0]
-            assert "_internal_field" not in message
-
-
 class TestConfigureLogging:
     """Test suite for configure_logging function."""
 
-    def test_configure_logging_sets_log_level(self) -> None:
-        """Test that configure_logging sets the correct log level."""
-        # Note: We can't reliably test root logger level due to pytest interference
-        # Instead, we verify that configure_logging accepts valid log levels
-        # and that the logger is configured
-        configure_logging(json_format=False, log_level="DEBUG")
-        logger = structlog.get_logger()
-        assert logger is not None
-
+    def test_configure_logging_accepts_valid_log_levels(self) -> None:
+        """Test that configure_logging accepts valid log levels without errors."""
         # Verify that different log levels are accepted
+        configure_logging(json_format=False, log_level="DEBUG")
         configure_logging(json_format=False, log_level="INFO")
         configure_logging(json_format=False, log_level="WARNING")
         configure_logging(json_format=False, log_level="ERROR")
+
+        logger = structlog.get_logger()
+        assert logger is not None
 
     def test_configure_logging_with_json_format(self) -> None:
         """Test that configure_logging uses JSON renderer when requested."""
@@ -194,8 +62,7 @@ class TestConfigureLogging:
 
         logger = structlog.get_logger()
 
-        # We can't easily test console output without mocking rich.Console
-        # But we can verify the logger is configured
+        # We can't easily test console output, but verify logger is configured
         assert logger is not None
 
 
