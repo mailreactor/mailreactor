@@ -27,7 +27,8 @@ class Settings(BaseSettings):  # type: ignore[misc]
     Attributes:
         host: Server bind address (default: 127.0.0.1 for security)
         port: Server port (default: 8000)
-        log_level: Logging level (DEBUG, INFO, WARN, ERROR)
+        log_level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+        json_logs: Enable JSON log output for production (default: False for console)
         api_key_header: HTTP header name for API key authentication
         cors_enabled: Enable CORS middleware (disabled by default for security)
         allowed_origins: CORS allowed origins when CORS is enabled
@@ -49,6 +50,7 @@ class Settings(BaseSettings):  # type: ignore[misc]
     host: str = "127.0.0.1"  # Localhost by default (security - FR-036)
     port: int = 8000
     log_level: str = "INFO"
+    json_logs: bool = False  # Console logs by default, JSON for production
 
     # Security configuration
     api_key_header: str = "X-API-Key"

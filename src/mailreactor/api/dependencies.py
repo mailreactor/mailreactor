@@ -6,10 +6,17 @@ This module provides shared FastAPI dependencies including:
 - Future: State management dependencies
 """
 
+import time
 import uuid
+
+import structlog
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
+
+from mailreactor.utils.logging import bind_context, clear_context
+
+logger = structlog.get_logger()
 
 
 class RequestIDMiddleware(BaseHTTPMiddleware):  # type: ignore[misc]
@@ -18,7 +25,7 @@ class RequestIDMiddleware(BaseHTTPMiddleware):  # type: ignore[misc]
     Generates a UUID for each request and injects it into:
     - Response headers as X-Request-ID
     - Request state for access by endpoints
-    - Future: structlog context for log correlation (Story 1.3)
+    - Structlog context for log correlation
 
     This implements NFR-O3 (Request Tracing) for operational observability.
 
@@ -44,13 +51,32 @@ class RequestIDMiddleware(BaseHTTPMiddleware):  # type: ignore[misc]
         # Store in request state for endpoint access
         request.state.request_id = request_id
 
-        # TODO (Story 1.3): Bind request_id to structlog context
-        # structlog.contextvars.bind_contextvars(request_id=request_id)
+        # Bind request_id to structlog context
+        bind_context(request_id=request_id)
 
-        # Process request
-        response = await call_next(request)
+        # Track request timing
+        start_time = time.time()
 
-        # Inject request ID into response headers
-        response.headers["X-Request-ID"] = request_id
+        try:
+            # Process request
+            response = await call_next(request)
 
-        return response
+            # Calculate duration
+            duration_ms = int((time.time() - start_time) * 1000)
+
+            # Log request completion
+            logger.info(
+                "api_request",
+                method=request.method,
+                path=str(request.url.path),
+                status_code=response.status_code,
+                duration_ms=duration_ms,
+            )
+
+            # Inject request ID into response headers
+            response.headers["X-Request-ID"] = request_id
+
+            return response
+        finally:
+            # Clean up context after request (prevent context leakage)
+            clear_context()

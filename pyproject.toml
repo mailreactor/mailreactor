@@ -22,6 +22,7 @@ dependencies = [
     "pydantic-settings",   # Environment-based configuration
     "typer>=0.20.0",       # CLI framework
     "structlog",           # Structured logging
+    "rich",                # Rich console output for logging
 ]
 
 [project.optional-dependencies]
