@@ -20,7 +20,7 @@
 
           shellHook = ''
             echo
-            echo "Mail Reactor Development Environment"
+            echo "🌟 Mail Reactor Development Environment"
             echo "$(python --version) | $(uv --version)"
             
             # Only show quick start if no virtual env exists (first time)
