@@ -7,8 +7,6 @@ These tests measure API endpoint latency with mocked external services.
 """
 
 import pytest
-import time
-from typing import List
 
 
 @pytest.mark.benchmark
@@ -68,35 +66,3 @@ async def test_api_endpoint_latency_placeholder(api_client, mock_async_imap_clie
     #
     # # NFR-P2: API endpoints <200ms p95 (with mocked dependencies)
     # assert p95 < 0.2, f"API endpoint p95 too slow: {p95*1000:.1f}ms (target: <200ms)"
-
-
-@pytest.mark.benchmark
-@pytest.mark.performance
-def test_manual_latency_measurement_example():
-    """
-    Example: Manual latency measurement without pytest-benchmark.
-
-    Shows how to measure p95 latency manually for comparison.
-    """
-    latencies: List[float] = []
-
-    # Simulate 100 API calls
-    for _ in range(100):
-        start = time.perf_counter()
-
-        # Simulate some work (replace with actual API call)
-        time.sleep(0.001)  # 1ms simulated work
-
-        elapsed = time.perf_counter() - start
-        latencies.append(elapsed)
-
-    # Calculate percentiles
-    sorted_latencies = sorted(latencies)
-    p50 = sorted_latencies[50]
-    p95 = sorted_latencies[95]
-    p99 = sorted_latencies[99]
-
-    # Verify percentiles are reasonable
-    assert p50 < 0.01, f"p50: {p50 * 1000:.1f}ms"
-    assert p95 < 0.01, f"p95: {p95 * 1000:.1f}ms"
-    assert p99 < 0.01, f"p99: {p99 * 1000:.1f}ms"
