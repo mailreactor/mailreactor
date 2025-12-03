@@ -1,12 +1,14 @@
 """FastAPI application initialization and configuration.
 
 This module creates and configures the Mail Reactor FastAPI application with:
+- Structured logging (configured first, before any other initialization)
 - OpenAPI documentation (Swagger UI and ReDoc)
 - CORS middleware (disabled by default)
 - Custom exception handlers for MailReactorException hierarchy
 - Request ID middleware for tracing
 """
 
+import structlog
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -14,6 +16,9 @@ from fastapi.responses import JSONResponse
 from mailreactor.api.dependencies import RequestIDMiddleware
 from mailreactor.config import settings
 from mailreactor.exceptions import MailReactorException
+from mailreactor.utils.logging import configure_logging
+
+logger = structlog.get_logger()
 
 
 def create_app() -> FastAPI:
@@ -27,6 +32,16 @@ def create_app() -> FastAPI:
         >>> app.title
         'Mail Reactor API'
     """
+    # Configure logging FIRST (before any other operations)
+    configure_logging(json_format=settings.json_logs, log_level=settings.log_level)
+
+    logger.info(
+        "server_starting",
+        host=settings.host,
+        port=settings.port,
+        log_level=settings.log_level,
+    )
+
     app = FastAPI(
         title="Mail Reactor API",
         version="0.1.0",
@@ -62,6 +77,12 @@ def create_app() -> FastAPI:
         Returns:
             JSONResponse with error code, message, and appropriate HTTP status
         """
+        logger.warning(
+            "mailreactor_exception",
+            error_code=exc.__class__.__name__.upper(),
+            message=exc.message,
+            status_code=exc.status_code,
+        )
         return JSONResponse(
             status_code=exc.status_code,
             content={
@@ -83,6 +104,12 @@ def create_app() -> FastAPI:
         Returns:
             JSONResponse with generic error message and 500 status
         """
+        logger.error(
+            "internal_server_error",
+            error_type=exc.__class__.__name__,
+            error_message=str(exc),
+            exc_info=True,
+        )
         return JSONResponse(
             status_code=500,
             content={

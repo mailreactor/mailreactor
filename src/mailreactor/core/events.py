@@ -5,9 +5,13 @@ This module has ZERO dependencies on FastAPI or any HTTP framework.
 """
 
 import asyncio
-from typing import Any, Awaitable, Callable, Dict, List
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Any, Awaitable, Callable, Dict, List
+
+import structlog
+
+logger = structlog.get_logger()
 
 
 @dataclass
@@ -128,10 +132,16 @@ class EventEmitter:
             return_exceptions=True,
         )
 
-        # Log any exceptions (in production, use structlog)
+        # Log any exceptions
         for i, result in enumerate(results):
             if isinstance(result, Exception):
-                print(f"Handler {i} for {event.event_type} failed: {result}")
+                logger.error(
+                    "event_handler_failed",
+                    handler_index=i,
+                    event_type=event.event_type,
+                    error=str(result),
+                    exc_info=result,
+                )
 
     async def _safe_handle(self, handler: EventHandler, event: Event) -> None:
         """Execute a handler with exception isolation.
