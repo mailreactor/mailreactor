@@ -45,7 +45,7 @@ dev = [
 
 
 [project.scripts]
-mailreactor = "mailreactor.cli:app"  # CLI entry point (to be implemented in Sprint 1)
+mailreactor = "mailreactor.__main__:main"  # CLI entry point via __main__.py
 
 [tool.ruff]
 line-length = 100

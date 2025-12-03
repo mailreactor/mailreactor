@@ -178,8 +178,9 @@ class TestRequestIDMiddleware:
 class TestAppImport:
     """Test app can be imported without errors."""
 
-    def test_module_level_app(self):
-        """Test module-level app instance exists and is configured."""
-        from mailreactor.main import app
+    def test_create_app_factory(self):
+        """Test create_app() factory function works correctly."""
+        from mailreactor.main import create_app
 
+        app = create_app()
         assert app.title == "Mail Reactor API"

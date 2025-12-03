@@ -62,6 +62,9 @@ def _filter_sensitive_data(
 def configure_logging(json_format: bool = False, log_level: str = "INFO") -> None:
     """Configure structlog with console or JSON renderer.
 
+    This also configures Python's standard logging (used by Uvicorn and other
+    libraries) to use structlog's formatting, ensuring consistent log output.
+
     Args:
         json_format: If True, use JSON renderer. If False, use console renderer.
         log_level: Minimum log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
@@ -73,14 +76,7 @@ def configure_logging(json_format: bool = False, log_level: str = "INFO") -> Non
         >>> # Production mode with JSON output
         >>> configure_logging(json_format=True, log_level="WARNING")
     """
-    # Configure stdlib logging as backend
-    logging.basicConfig(
-        format="%(message)s",
-        level=getattr(logging, log_level.upper()),
-        stream=sys.stderr,
-    )
-
-    # Shared processors (before renderer)
+    # Shared processors used by both structlog and stdlib loggers (before renderer)
     shared_processors: list[Any] = [
         structlog.contextvars.merge_contextvars,
         structlog.stdlib.add_log_level,
@@ -91,31 +87,44 @@ def configure_logging(json_format: bool = False, log_level: str = "INFO") -> Non
     ]
 
     # Choose renderer based on configuration
-    if json_format:
-        # Production: JSON Lines format
-        # Note: format_exc_info must be absent for JSON to work with ConsoleRenderer
-        processors = shared_processors + [
-            structlog.processors.format_exc_info,
-            structlog.processors.JSONRenderer(),
-        ]
-    else:
-        # Development: Rich-enhanced console output
-        # ConsoleRenderer handles exceptions itself, so don't use format_exc_info
-        processors = shared_processors + [
-            structlog.dev.ConsoleRenderer(
-                colors=True,
-                exception_formatter=structlog.dev.rich_traceback,
-            ),
-        ]
+    renderer = (
+        structlog.processors.JSONRenderer()
+        if json_format
+        else structlog.dev.ConsoleRenderer(
+            colors=True,
+            exception_formatter=structlog.dev.rich_traceback,
+        )
+    )
 
-    # Configure structlog
+    # Configure structlog with stdlib integration
+    # Note: structlog loggers use these processors + wrap_for_formatter
     structlog.configure(
-        processors=processors,
+        processors=[
+            structlog.stdlib.filter_by_level,
+            *shared_processors,  # Reuse shared processors
+            structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
+        ],
         wrapper_class=structlog.stdlib.BoundLogger,
         context_class=dict,
         logger_factory=structlog.stdlib.LoggerFactory(),
         cache_logger_on_first_use=True,
     )
+
+    # Configure Python's standard logging to use structlog's formatting
+    # This makes Uvicorn and other libraries use structlog formatting
+    # Note: foreign_pre_chain processes stdlib logs before passing to renderer
+    formatter = structlog.stdlib.ProcessorFormatter(
+        processor=renderer,
+        foreign_pre_chain=shared_processors,
+    )
+
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(formatter)
+
+    root_logger = logging.getLogger()
+    root_logger.handlers.clear()
+    root_logger.addHandler(handler)
+    root_logger.setLevel(getattr(logging, log_level.upper()))
 
 
 def bind_context(**kwargs: Any) -> None:

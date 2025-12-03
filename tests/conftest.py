@@ -5,7 +5,19 @@ This file provides reusable fixtures for unit, integration, and E2E tests.
 Uses Python mocks (unittest.mock) for fast, isolated testing.
 """
 
+import os
 import pytest
+
+# Set test mode to prevent module-level app creation in main.py
+os.environ["MAILREACTOR_TEST_MODE"] = "1"
+
+# Import cli module early to ensure it's available for mocking
+# This prevents "module 'mailreactor' has no attribute 'cli'" errors
+# when performance tests delete and reimport mailreactor
+try:
+    import mailreactor.cli.server  # noqa: F401
+except ImportError:
+    pass  # Module might not exist in early development
 from unittest.mock import AsyncMock, Mock, MagicMock
 from httpx import AsyncClient, ASGITransport
 from typing import AsyncGenerator, Dict, Any
