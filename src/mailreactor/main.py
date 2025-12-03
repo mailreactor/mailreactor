@@ -12,9 +12,10 @@ Note: Logging is configured by the CLI before calling create_app().
 import structlog
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
-from mailreactor.api.dependencies import RequestIDMiddleware
+from mailreactor.api.health import router as health_router
+from mailreactor.api.middleware import RequestIDMiddleware
 from mailreactor.config import settings
 from mailreactor.exceptions import MailReactorException
 
@@ -52,6 +53,22 @@ def create_app() -> FastAPI:
             allow_methods=["*"],
             allow_headers=["*"],
         )
+
+    # Register routers
+    app.include_router(health_router)  # Mounts at root level /health
+
+    # Favicon endpoint (envelope emoji)
+    @app.get("/favicon.ico", include_in_schema=False)  # type: ignore[misc]
+    async def favicon() -> Response:
+        """Serve envelope emoji as favicon.
+
+        Returns SVG favicon for browser tab display.
+        """
+        # SVG with envelope emoji - works across all modern browsers
+        svg_content = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+            <text y="80" font-size="80">⚛️</text>
+        </svg>"""
+        return Response(content=svg_content, media_type="image/svg+xml")
 
     # Exception handlers
     @app.exception_handler(MailReactorException)  # type: ignore[misc]

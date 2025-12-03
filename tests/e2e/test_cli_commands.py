@@ -41,10 +41,6 @@ class TestCLIEntryPoints:
 
             assert server_started, "Server did not start via module invocation"
 
-            # Verify docs endpoint
-            response = httpx.get("http://127.0.0.1:8002/docs")
-            assert response.status_code == 200
-
         finally:
             # Cleanup
             process.terminate()

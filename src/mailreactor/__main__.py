@@ -12,6 +12,7 @@ import typer
 
 # Import server module to register commands
 from mailreactor.cli import server
+from mailreactor.utils.version import get_app_version
 
 # Main CLI app with subcommands
 app = typer.Typer(
@@ -22,16 +23,18 @@ app = typer.Typer(
 )
 
 
-def _version_callback(value: bool) -> None:
-    """Show version and exit."""
-    if value:
-        from importlib.metadata import version as get_version
+def _version_callback(show_version: bool) -> None:
+    """Show version and exit if --version flag provided.
 
-        try:
-            v = get_version("mailreactor")
-            typer.echo(f"Mail Reactor {v}")
-        except Exception:
-            typer.echo("Mail Reactor 0.1.0 (development)")
+    Args:
+        show_version: True if --version flag was passed, False otherwise
+
+    Note:
+        This is Typer machinery - the callback receives the option's value.
+        The is_eager=True flag makes this run before command validation.
+    """
+    if show_version:
+        typer.echo(f"Mail Reactor {get_app_version()}")
         raise typer.Exit()
 
 

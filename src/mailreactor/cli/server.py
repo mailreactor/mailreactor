@@ -92,15 +92,15 @@ def start(
     # Create FastAPI app
     fastapi_app = create_app()
 
-    # Display helpful startup hints
+    # Display helpful startup tips
     api_url = f"http://{host}:{port}"
     logger.info(
-        "docs_hint",
-        url=f"{api_url}/docs",
-        message="API docs will be available at this URL once server starts",
+        "usage_tip",
+        docs_url=f"{api_url}/docs",
     )
     logger.info(
-        "account_setup_hint", message="Add account with: mailreactor start --account you@email.com"
+        "usage_tip",
+        account_command="mailreactor start --account you@email.com",
     )
 
     # Start Uvicorn server (uvicorn will log when server is actually running)

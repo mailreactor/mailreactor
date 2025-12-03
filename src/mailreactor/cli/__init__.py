@@ -1,9 +1,8 @@
-"""Typer CLI commands.
+"""CLI commands for Mail Reactor.
 
-Entry point: mailreactor command
-To be implemented in Story 1.4.
+This package contains Typer-based CLI commands:
+- server: Server management commands (start)
+- Additional commands will be added in future stories (dev mode, account management)
+
+The main CLI app is defined in __main__.py.
 """
-
-# Placeholder app for pyproject.toml entry point
-# Will be implemented properly in Story 1.4: CLI Framework with Start Command
-app = None

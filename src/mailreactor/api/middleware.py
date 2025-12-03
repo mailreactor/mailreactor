@@ -1,9 +1,8 @@
-"""FastAPI dependencies and middleware.
+"""FastAPI middleware components.
 
-This module provides shared FastAPI dependencies including:
+This module provides HTTP middleware including:
 - Request ID middleware for request tracing (NFR-O3)
-- Future: API key authentication
-- Future: State management dependencies
+- Request timing and logging
 """
 
 import time
@@ -61,16 +60,21 @@ class RequestIDMiddleware(BaseHTTPMiddleware):  # type: ignore[misc]
             # Process request
             response = await call_next(request)
 
-            # Calculate duration
-            duration_ms = int((time.time() - start_time) * 1000)
+            # Calculate duration (use float for sub-millisecond precision)
+            duration_ms = round((time.time() - start_time) * 1000, 2)
+
+            # Classify request type for filtering/metrics
+            path = str(request.url.path)
+            request_type = "api" if path.startswith("/api/") else "static"
 
             # Log request completion
             logger.info(
-                "api_request",
+                "http_request",
                 method=request.method,
-                path=str(request.url.path),
+                path=path,
                 status_code=response.status_code,
                 duration_ms=duration_ms,
+                request_type=request_type,
             )
 
             # Inject request ID into response headers
