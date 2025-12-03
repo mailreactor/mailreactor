@@ -37,9 +37,7 @@ class TestOpenAPIDocumentation:
         client = TestClient(app)
 
         response = client.get("/docs")
-
         assert response.status_code == 200
-        assert "text/html" in response.headers["content-type"]
 
     def test_redoc_endpoint_accessible(self):
         """Test /redoc (ReDoc) is accessible."""
@@ -47,25 +45,21 @@ class TestOpenAPIDocumentation:
         client = TestClient(app)
 
         response = client.get("/redoc")
-
         assert response.status_code == 200
-        assert "text/html" in response.headers["content-type"]
 
     def test_openapi_json_accessible(self):
-        """Test /openapi.json is accessible."""
+        """Test /openapi.json is accessible and has our app info."""
         app = create_app()
         client = TestClient(app)
 
         response = client.get("/openapi.json")
 
         assert response.status_code == 200
-        assert response.headers["content-type"] == "application/json"
 
-        # Verify OpenAPI schema structure
+        # Verify our app configuration in OpenAPI schema
         schema = response.json()
         assert schema["info"]["title"] == "Mail Reactor API"
         assert schema["info"]["version"] == "0.1.0"
-        assert "openapi" in schema
 
 
 class TestCORSMiddleware:

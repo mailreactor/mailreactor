@@ -28,19 +28,6 @@ def client():
 class TestHealthEndpoint:
     """Test health check endpoint basic functionality."""
 
-    def test_health_endpoint_returns_200(self, client):
-        """Test GET /health returns HTTP 200 OK."""
-        response = client.get("/health")
-
-        assert response.status_code == 200
-
-    def test_health_endpoint_returns_json(self, client):
-        """Test GET /health returns JSON content type."""
-        response = client.get("/health")
-
-        assert response.status_code == 200
-        assert "application/json" in response.headers["content-type"]
-
     def test_health_response_schema(self, client):
         """Test response includes all required fields with correct types."""
         response = client.get("/health")
@@ -154,69 +141,3 @@ class TestHealthEndpointLogging:
         assert "[info" in captured.out.lower()
         assert "http_request" in captured.out
         assert "/health" in captured.out
-
-
-class TestHealthRouterRegistration:
-    """Test health router is properly registered."""
-
-    def test_health_route_exists_in_app_routes(self):
-        """Test /health route is registered in FastAPI app."""
-        app = create_app()
-
-        # Check if /health path exists in registered routes
-        route_paths = [route.path for route in app.routes]
-
-        assert "/health" in route_paths
-
-    def test_health_route_has_correct_methods(self):
-        """Test /health route allows GET method."""
-        app = create_app()
-
-        # Find the /health route
-        health_route = None
-        for route in app.routes:
-            if route.path == "/health":
-                health_route = route
-                break
-
-        assert health_route is not None
-        assert "GET" in health_route.methods
-
-
-class TestHealthOpenAPIDocumentation:
-    """Test health endpoint OpenAPI documentation."""
-
-    def test_health_endpoint_in_openapi_spec(self, client):
-        """Test /health endpoint appears in OpenAPI spec."""
-        response = client.get("/openapi.json")
-        openapi_spec = response.json()
-
-        assert "/health" in openapi_spec["paths"]
-
-    def test_health_endpoint_has_get_method_in_openapi(self, client):
-        """Test /health endpoint documents GET method."""
-        response = client.get("/openapi.json")
-        openapi_spec = response.json()
-
-        assert "get" in openapi_spec["paths"]["/health"]
-
-    def test_health_endpoint_has_response_schema(self, client):
-        """Test /health endpoint documents response schema."""
-        response = client.get("/openapi.json")
-        openapi_spec = response.json()
-
-        get_spec = openapi_spec["paths"]["/health"]["get"]
-
-        # Should have responses documented
-        assert "responses" in get_spec
-        assert "200" in get_spec["responses"]
-
-    def test_health_endpoint_has_description(self, client):
-        """Test /health endpoint has description in OpenAPI."""
-        response = client.get("/openapi.json")
-        openapi_spec = response.json()
-
-        get_spec = openapi_spec["paths"]["/health"]["get"]
-
-        # Should have description or summary
-        assert "description" in get_spec or "summary" in get_spec

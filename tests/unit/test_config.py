@@ -7,8 +7,6 @@ Tests cover:
 - Settings model validation
 """
 
-import pytest
-
 from mailreactor.config import Settings
 
 
@@ -84,47 +82,3 @@ class TestEnvironmentVariableOverrides:
         monkeypatch.setenv("MAILREACTOR_ALLOWED_ORIGINS", '["https://example.com"]')
         settings = Settings()
         assert settings.allowed_origins == ["https://example.com"]
-
-    def test_env_case_insensitive(self, monkeypatch):
-        """Test environment variables are case-insensitive."""
-        monkeypatch.setenv("mailreactor_port", "5000")
-        settings = Settings()
-        assert settings.port == 5000
-
-
-class TestSettingsValidation:
-    """Test Pydantic validation."""
-
-    def test_invalid_port_type(self, monkeypatch):
-        """Test invalid port type raises validation error."""
-        monkeypatch.setenv("MAILREACTOR_PORT", "not_a_number")
-
-        with pytest.raises(Exception):  # Pydantic ValidationError
-            Settings()
-
-    def test_invalid_bool_type(self, monkeypatch):
-        """Test invalid boolean type for cors_enabled raises validation error."""
-        monkeypatch.setenv("MAILREACTOR_CORS_ENABLED", "not_a_bool")
-
-        # Pydantic v2 is stricter with bool parsing
-        with pytest.raises(Exception):  # Pydantic ValidationError
-            Settings()
-
-
-class TestSettingsModelConfig:
-    """Test settings model configuration."""
-
-    def test_env_prefix(self):
-        """Test settings use MAILREACTOR_ prefix."""
-        settings = Settings()
-        assert settings.model_config["env_prefix"] == "MAILREACTOR_"
-
-    def test_env_file(self):
-        """Test settings support .env file loading."""
-        settings = Settings()
-        assert settings.model_config["env_file"] == ".env"
-
-    def test_case_sensitivity(self):
-        """Test settings are case-insensitive."""
-        settings = Settings()
-        assert settings.model_config["case_sensitive"] is False

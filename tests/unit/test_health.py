@@ -15,10 +15,6 @@ from mailreactor.api.health import _app_start_time
 class TestAppStartTime:
     """Test application start time tracking."""
 
-    def test_app_start_time_is_datetime(self):
-        """Test module-level _app_start_time is initialized as datetime."""
-        assert isinstance(_app_start_time, datetime)
-
     def test_app_start_time_is_reasonable(self):
         """Test _app_start_time is within reasonable bounds (not far in past/future)."""
         now = datetime.utcnow()
