@@ -33,7 +33,7 @@ def server_process() -> subprocess.Popen:  # type: ignore[type-arg]
             text=True,
         )
         # Wait a bit for server to start
-        time.sleep(2)
+        time.sleep(0.5)
         return process
 
     yield _start_server
@@ -42,7 +42,7 @@ def server_process() -> subprocess.Popen:  # type: ignore[type-arg]
     if process and process.poll() is None:
         process.terminate()
         try:
-            process.wait(timeout=5)
+            process.wait(timeout=2)
         except subprocess.TimeoutExpired:
             process.kill()
             process.wait()
@@ -66,7 +66,7 @@ class TestServerStartup:
                 if response.status_code == 200:
                     break
             except (httpx.ConnectError, httpx.TimeoutException):
-                time.sleep(0.5)
+                time.sleep(0.2)
         else:
             pytest.fail("Server did not start within expected time")
 
@@ -94,7 +94,7 @@ class TestServerStartup:
                 if response.status_code == 200:
                     break
             except (httpx.ConnectError, httpx.TimeoutException):
-                time.sleep(0.5)
+                time.sleep(0.2)
         else:
             pytest.fail("Server did not start on custom port")
 
@@ -177,10 +177,99 @@ class TestServerSecurityDefaults:
                 if response.status_code == 200:
                     break
             except (httpx.ConnectError, httpx.TimeoutException):
-                time.sleep(0.5)
+                time.sleep(0.2)
 
         # Verify accessible on localhost
         response = httpx.get("http://127.0.0.1:8000/docs")
+        assert response.status_code == 200
+
+        # Cleanup
+        process.terminate()
+        process.wait(timeout=5)
+
+
+class TestDevCommand:
+    """Test dev command with auto-reload (Story 1.8)."""
+
+    def test_dev_command_starts_server_with_reload(
+        self,
+        server_process: subprocess.Popen,  # type: ignore[type-arg]
+    ) -> None:
+        """Test dev command starts server successfully."""
+        process = server_process(["dev"])
+
+        # Wait for server to be ready
+        max_retries = 10
+        for _ in range(max_retries):
+            try:
+                response = httpx.get("http://127.0.0.1:8000/health", timeout=1.0)
+                if response.status_code == 200:
+                    break
+            except (httpx.ConnectError, httpx.TimeoutException):
+                time.sleep(0.2)
+        else:
+            pytest.fail("Dev server did not start within expected time")
+
+        # Verify server responds
+        response = httpx.get("http://127.0.0.1:8000/health")
+        assert response.status_code == 200
+
+        # Cleanup
+        process.terminate()
+        process.wait(timeout=5)
+
+    def test_dev_command_logs_development_mode_warning(
+        self,
+        server_process: subprocess.Popen,  # type: ignore[type-arg]
+    ) -> None:
+        """Test dev command logs development mode warning.
+
+        Note: This test verifies the dev command starts successfully.
+        Log message verification is covered by unit tests (mocked).
+        """
+        process = server_process(["dev"])
+
+        # Wait for server to be ready
+        max_retries = 10
+        for _ in range(max_retries):
+            try:
+                response = httpx.get("http://127.0.0.1:8000/health", timeout=1.0)
+                if response.status_code == 200:
+                    break
+            except (httpx.ConnectError, httpx.TimeoutException):
+                time.sleep(0.2)
+        else:
+            pytest.fail("Dev server did not start")
+
+        # Server started successfully (warning would prevent startup if broken)
+        response = httpx.get("http://127.0.0.1:8000/health")
+        assert response.status_code == 200
+
+        # Cleanup
+        process.terminate()
+        process.wait(timeout=5)
+
+    def test_dev_command_with_custom_port(
+        self,
+        server_process: subprocess.Popen,  # type: ignore[type-arg]
+    ) -> None:
+        """Test dev command starts on custom port."""
+        process = server_process(["dev", "--port", "8002"])
+
+        # Wait for server to be ready
+        max_retries = 10
+        for _ in range(max_retries):
+            try:
+                response = httpx.get("http://127.0.0.1:8002/health", timeout=1.0)
+                if response.status_code == 200:
+                    break
+            except (httpx.ConnectError, httpx.TimeoutException):
+                time.sleep(0.2)
+        else:
+            pytest.fail("Dev server did not start on custom port")
+
+        # Verify server on port 8002
+        response = httpx.get("http://127.0.0.1:8002/health")
         assert response.status_code == 200
 
         # Cleanup

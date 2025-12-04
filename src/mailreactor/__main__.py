@@ -55,14 +55,7 @@ def main_callback(
 
 # Register commands
 app.command("start")(server.start)
-
-
-@app.command()  # type: ignore[misc]
-def dev() -> None:
-    """Start development server with auto-reload (Story 1.8 - Not yet implemented)."""
-    typer.echo("❌ Dev mode not yet implemented (Story 1.8)", err=True)
-    typer.echo("   For now, use: mailreactor start", err=True)
-    raise typer.Exit(1)
+app.command("dev", help="Start with auto-reload for development")(server.dev)
 
 
 @app.command()  # type: ignore[misc]

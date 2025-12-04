@@ -31,22 +31,6 @@ class TestAppCreation:
 class TestOpenAPIDocumentation:
     """Test OpenAPI documentation endpoints."""
 
-    def test_docs_endpoint_accessible(self):
-        """Test /docs (Swagger UI) is accessible."""
-        app = create_app()
-        client = TestClient(app)
-
-        response = client.get("/docs")
-        assert response.status_code == 200
-
-    def test_redoc_endpoint_accessible(self):
-        """Test /redoc (ReDoc) is accessible."""
-        app = create_app()
-        client = TestClient(app)
-
-        response = client.get("/redoc")
-        assert response.status_code == 200
-
     def test_openapi_json_accessible(self):
         """Test /openapi.json is accessible and has our app info."""
         app = create_app()

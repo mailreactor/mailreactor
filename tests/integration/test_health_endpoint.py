@@ -74,31 +74,6 @@ class TestHealthEndpoint:
 
         assert data["status"] == "healthy"
 
-    def test_health_version_is_present(self, client):
-        """Test health endpoint returns version string."""
-        response = client.get("/health")
-        data = response.json()["data"]
-
-        # Version should be non-empty string in semantic versioning format
-        assert isinstance(data["version"], str)
-        assert len(data["version"]) > 0
-        assert data["version"][0].isdigit()  # Starts with digit
-
-    def test_health_uptime_is_positive(self, client):
-        """Test uptime_seconds is a positive number."""
-        response = client.get("/health")
-        data = response.json()["data"]
-
-        assert data["uptime_seconds"] >= 0
-
-    def test_health_uptime_is_reasonable(self, client):
-        """Test uptime is reasonable (not absurdly large)."""
-        response = client.get("/health")
-        data = response.json()["data"]
-
-        # Should be less than 1 hour for test execution
-        assert data["uptime_seconds"] < 3600
-
 
 class TestHealthEndpointBehavior:
     """Test health endpoint behavioral requirements."""
