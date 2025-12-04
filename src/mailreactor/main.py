@@ -11,6 +11,7 @@ Note: Logging is configured by the CLI before calling create_app().
 
 import structlog
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
@@ -18,6 +19,7 @@ from mailreactor.api.health import router as health_router
 from mailreactor.api.middleware import RequestIDMiddleware
 from mailreactor.config import settings
 from mailreactor.exceptions import MailReactorException
+from mailreactor.models.responses import ErrorDetail, ErrorResponse
 from mailreactor.utils.version import get_app_version
 
 logger = structlog.get_logger()
@@ -104,7 +106,7 @@ Thanks for using Mail Reactor!
             exc: MailReactorException instance
 
         Returns:
-            JSONResponse with error code, message, and appropriate HTTP status
+            JSONResponse with ErrorResponse model and appropriate HTTP status
         """
         logger.warning(
             "mailreactor_exception",
@@ -114,12 +116,38 @@ Thanks for using Mail Reactor!
         )
         return JSONResponse(
             status_code=exc.status_code,
-            content={
-                "error": {
-                    "code": exc.__class__.__name__.upper(),
-                    "message": exc.message,
-                }
-            },
+            content=ErrorResponse(
+                error=ErrorDetail(
+                    code=exc.__class__.__name__.upper(),
+                    message=exc.message,
+                    details=None,
+                )
+            ).model_dump(),
+        )
+
+    @app.exception_handler(RequestValidationError)  # type: ignore[misc]
+    async def validation_exception_handler(
+        request: Request, exc: RequestValidationError
+    ) -> JSONResponse:
+        """Handle FastAPI validation errors with field-specific details.
+
+        Args:
+            request: FastAPI request instance
+            exc: RequestValidationError from Pydantic validation
+
+        Returns:
+            JSONResponse with ErrorResponse model and 400 status
+        """
+        logger.warning("validation_error", errors=exc.errors())
+        return JSONResponse(
+            status_code=400,
+            content=ErrorResponse(
+                error=ErrorDetail(
+                    code="VALIDATION_ERROR",
+                    message="Invalid request parameters",
+                    details={"errors": exc.errors()},
+                )
+            ).model_dump(),
         )
 
     @app.exception_handler(Exception)  # type: ignore[misc]
@@ -131,7 +159,7 @@ Thanks for using Mail Reactor!
             exc: Generic exception instance
 
         Returns:
-            JSONResponse with generic error message and 500 status
+            JSONResponse with ErrorResponse model and 500 status
         """
         logger.error(
             "internal_server_error",
@@ -141,12 +169,13 @@ Thanks for using Mail Reactor!
         )
         return JSONResponse(
             status_code=500,
-            content={
-                "error": {
-                    "code": "INTERNAL_SERVER_ERROR",
-                    "message": "An unexpected error occurred",
-                }
-            },
+            content=ErrorResponse(
+                error=ErrorDetail(
+                    code="INTERNAL_SERVER_ERROR",
+                    message="An unexpected error occurred",
+                    details=None,
+                )
+            ).model_dump(),
         )
 
     return app
