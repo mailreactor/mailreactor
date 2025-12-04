@@ -30,18 +30,10 @@ async def get_health() -> HealthResponse:
     """Check API health and uptime.
 
     Returns system status, version, and uptime in seconds.
-    This endpoint is always accessible without authentication.
-
-    The health endpoint should never return 500 - it's the monitoring canary.
-    Response time target: <50ms at p95 percentile (NFR-P2).
+    No authentication required - always accessible for monitoring.
 
     Returns:
         HealthResponse with current system status
-
-    Examples:
-        >>> # Via HTTP
-        >>> # GET /health
-        >>> # Response: {"status": "healthy", "version": "0.1.0", "uptime_seconds": 42.5, ...}
     """
     # Calculate uptime from module-level start time
     # Simple subtraction - no I/O, no external calls, no database queries

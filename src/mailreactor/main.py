@@ -18,6 +18,7 @@ from mailreactor.api.health import router as health_router
 from mailreactor.api.middleware import RequestIDMiddleware
 from mailreactor.config import settings
 from mailreactor.exceptions import MailReactorException
+from mailreactor.utils.version import get_app_version
 
 logger = structlog.get_logger()
 
@@ -35,7 +36,28 @@ def create_app() -> FastAPI:
     """
     app = FastAPI(
         title="Mail Reactor API",
-        version="0.1.0",
+        description="""
+## Welcome to Mail Reactor API
+
+Send and receive emails via REST API using your IMAP/SMTP accounts.
+
+### What You Can Do
+
+- **Send emails** - Plain text, HTML, attachments, multiple recipients
+- **Retrieve emails** - Search your inbox using IMAP syntax
+- **Manage accounts** - Connect Gmail, Outlook, Yahoo, or any IMAP/SMTP server
+
+Thanks for using Mail Reactor!
+        """,
+        version=get_app_version(),
+        contact={
+            "name": "Mail Reactor Project",
+            "url": "https://github.com/yourusername/mailreactor",
+        },
+        license_info={
+            "name": "MIT License",
+            "url": "https://opensource.org/licenses/MIT",
+        },
         docs_url="/docs",
         redoc_url="/redoc",
         openapi_url="/openapi.json",
