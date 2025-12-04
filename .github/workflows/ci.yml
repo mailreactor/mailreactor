@@ -10,6 +10,9 @@ jobs:
   test:
     runs-on: ${{ matrix.os }}
     
+    env:
+      NO_COLOR: 1  # Disable ANSI color codes for consistent test output
+    
     strategy:
       fail-fast: false
       matrix:
