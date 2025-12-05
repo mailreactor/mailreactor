@@ -19,6 +19,7 @@ import uvicorn
 
 from mailreactor.config import Settings
 from mailreactor.utils.logging import configure_logging
+from mailreactor.utils.version import get_app_version
 
 logger = structlog.get_logger()
 
@@ -46,9 +47,12 @@ def _run_server(
 
     # Log development mode warning if in dev mode
     if dev_mode:
-        logger.warning("Development mode active (not for production use)")
+        logger.warning(
+            "development_mode",
+            production_mode="mailreactor start",
+        )
         logger.info(
-            "Development mode enabled",
+            "development_mode",
             auto_reload=True,
             watch_dir="src/mailreactor",
         )
@@ -78,6 +82,7 @@ def _run_server(
         host=host,
         port=port,
         log_level=log_level.upper(),
+        version=get_app_version(),
     )
 
     # Display helpful startup tips
@@ -85,6 +90,7 @@ def _run_server(
     logger.info(
         "usage_tip",
         docs_url=f"{api_url}/docs",
+        redoc_url=f"{api_url}/redoc",
     )
 
     # Show account command tip with appropriate command name

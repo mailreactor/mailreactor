@@ -54,7 +54,7 @@ Thanks for using Mail Reactor!
         version=get_app_version(),
         contact={
             "name": "Mail Reactor Project",
-            "url": "https://github.com/yourusername/mailreactor",
+            "url": "https://github.com/mailreactor/mailreactor",
         },
         license_info={
             "name": "MIT License",
