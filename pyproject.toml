@@ -20,6 +20,8 @@ dependencies = [
     "uvicorn[standard]",   # ASGI server
     "pydantic>=2.0.0",     # Data validation (bundled with FastAPI)
     "pydantic-settings",   # Environment-based configuration
+    "email-validator",     # Pydantic EmailStr validation
+    "pyyaml>=6.0.0",       # YAML parsing for providers.yaml
     "typer>=0.20.0",       # CLI framework
     "structlog",           # Structured logging
     "rich",                # Rich console output for logging
@@ -38,8 +40,8 @@ dev = [
     "ruff",
     "pre-commit",        # Sprint 0 Task #2.3: Pre-commit hooks
     "detect-secrets",    # Sprint 0 Task #2.3: Secret detection in hooks
-    # "safety",          # Sprint 0 Task #5: Requires auth - commented out, use pip-audit in future
     "mypy",
+    "types-PyYAML",
 ]
 
 
@@ -61,3 +63,4 @@ packages = ["src/mailreactor"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+

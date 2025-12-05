@@ -49,7 +49,7 @@ def _run_server(
     if dev_mode:
         logger.warning(
             "development_mode",
-            production_mode="mailreactor start",
+            production_mode="run: mailreactor start",
         )
         logger.info(
             "development_mode",

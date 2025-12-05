@@ -191,6 +191,80 @@ def mock_async_smtp_client() -> AsyncMock:
 
 
 # ============================================================================
+# Provider Detection Test Fixtures
+# ============================================================================
+
+
+@pytest.fixture
+def test_providers_yaml(tmp_path):
+    """
+    Create isolated test providers.yaml for provider detection tests.
+
+    Returns path to temporary YAML file with minimal test provider.
+    Tests should use this instead of production providers.yaml to avoid
+    coupling to production data.
+
+    Usage:
+        def test_detection(test_providers_yaml, monkeypatch):
+            # Override providers path to use test fixture
+            monkeypatch.setattr('mailreactor.core.provider_detector.Path',
+                                lambda *args: test_providers_yaml.parent)
+    """
+    yaml_content = """
+testprovider:
+  domains:
+    - test.com
+    - test.net
+  imap:
+    host: imap.testprovider.com
+    port: 993
+    ssl: true
+  smtp:
+    host: smtp.testprovider.com
+    port: 587
+    starttls: true
+
+anotherprovider:
+  domains:
+    - another.com
+  imap:
+    host: imap.another.com
+    port: 993
+    ssl: true
+  smtp:
+    host: smtp.another.com
+    port: 465
+    starttls: false
+"""
+    yaml_file = tmp_path / "providers.yaml"
+    yaml_file.write_text(yaml_content)
+    return yaml_file
+
+
+@pytest.fixture
+def loaded_providers():
+    """
+    Load production providers.yaml and return as dict for validation tests.
+
+    Use this when tests need to validate against actual production config
+    without hardcoding values.
+
+    Usage:
+        def test_gmail_matches_yaml(loaded_providers):
+            expected = loaded_providers['gmail']
+            config = detect_provider('user@gmail.com')
+            assert config.imap_host == expected['imap']['host']
+    """
+    import yaml
+    from pathlib import Path
+
+    # Load from production location
+    providers_path = Path(__file__).parent.parent / "src/mailreactor/core/providers.yaml"
+    with open(providers_path) as f:
+        return yaml.safe_load(f)
+
+
+# ============================================================================
 # Mock Account Credentials Fixtures
 # ============================================================================
 
@@ -210,7 +284,7 @@ def mock_account_credentials() -> Dict[str, Any]:
     """
     return {
         "email": "test@example.com",
-        "password": "fake-password-do-not-use-in-prod",
+        "password": "fake-password-do-not-use-in-prod",  # pragma: allowlist secret
         "imap_host": "imap.example.com",
         "imap_port": 993,
         "imap_ssl": True,
@@ -226,7 +300,7 @@ def mock_gmail_credentials() -> Dict[str, Any]:
     """Mock Gmail account credentials for testing."""
     return {
         "email": "test@gmail.com",
-        "password": "fake-gmail-password",
+        "password": "fake-gmail-password",  # pragma: allowlist secret
         "imap_host": "imap.gmail.com",
         "imap_port": 993,
         "imap_ssl": True,
@@ -324,7 +398,7 @@ def greenmail_test_account():
     """
     return {
         "email": "test@localhost",
-        "password": "test",
+        "password": "test",  # pragma: allowlist secret
         "imap_host": "localhost",
         "imap_port": 3143,
         "imap_ssl": False,

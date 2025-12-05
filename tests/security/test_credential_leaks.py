@@ -28,13 +28,13 @@ def test_credential_patterns_detection():
     """Verify credential detection patterns work correctly."""
     # Test cases with known credentials
     test_cases = [
-        ('password="secret123"', True),
-        ('api_key="abc-def-123"', True),
-        ('secret: "my-secret-value"', True),
+        ('password="secret123"', True),  # pragma: allowlist secret
+        ('api_key="abc-def-123"', True),  # pragma: allowlist secret
+        ('secret: "my-secret-value"', True),  # pragma: allowlist secret
         ('token="bearer-token-here"', True),
         ("bearer abc123xyz", True),
-        ('email="test@example.com"', False),  # Not a credential
-        ("username: admin", False),  # Not a credential
+        ('email="test@example.com"', False),
+        ("username: admin", False),
     ]
 
     for text, should_match in test_cases:
@@ -69,7 +69,7 @@ def test_credentials_in_log_would_fail():
     This test demonstrates that our detection would catch leaked credentials.
     """
     # Simulate a log entry WITH credentials (bad - should never happen)
-    unsafe_log = 'ERROR: Login failed with password="supersecret123" for user test@example.com'
+    unsafe_log = 'ERROR: Login failed with password="supersecret123" for user test@example.com'  # pragma: allowlist secret
 
     # Verify our patterns WOULD detect this
     found_credentials = []
@@ -96,7 +96,7 @@ async def test_api_error_no_password_leak_placeholder(api_client):
     # Future implementation:
     # response = await api_client.post("/accounts", json={
     #     "email": "test@example.com",
-    #     "password": "WrongPassword123!",
+    #     "password": "WrongPassword123!",  # pragma: allowlist secret
     #     "imap_host": "imap.example.com"
     # })
     #
@@ -109,31 +109,62 @@ async def test_api_error_no_password_leak_placeholder(api_client):
 
 
 @pytest.mark.security
-@pytest.mark.integration
-@pytest.mark.asyncio
-async def test_pydantic_model_excludes_credentials_placeholder():
+@pytest.mark.unit
+def test_pydantic_model_excludes_credentials():
     """
-    Test that Pydantic models exclude credentials from serialization.
+    Security test: Verify Pydantic models exclude credentials from serialization.
 
-    This will be implemented after Story 2.1 (Account Models).
+    Validates NFR-S1: Passwords never exposed in API responses or logs.
+    Tests that IMAPConfig, SMTPConfig, and MailAccount properly exclude passwords.
     """
-    pytest.skip("Account models not yet implemented (Story 2.1)")
+    from mailreactor.models.account import MailAccount, IMAPConfig, SMTPConfig
 
-    # Future implementation:
-    # from mailreactor.models import AccountCredentials
-    #
-    # creds = AccountCredentials(
-    #     email="test@example.com",
-    #     password="secret123",
-    #     imap_host="imap.example.com"
-    # )
-    #
-    # # Serialize to JSON
-    # json_data = creds.model_dump_json()
-    #
-    # # Verify password is excluded
-    # assert "secret123" not in json_data
-    # assert "password" not in json_data or creds.model_dump()["password"] == "***"
+    # Create account with sensitive credentials
+    account = MailAccount(
+        account_id="acc_test123",
+        email="security-test@example.com",
+        imap=IMAPConfig(
+            host="imap.example.com",
+            username="imap-user",
+            password="SuperSecret-IMAP-Password123!",  # pragma: allowlist secret
+        ),
+        smtp=SMTPConfig(
+            host="smtp.example.com",
+            username="smtp-user",
+            password="SuperSecret-SMTP-Password456!",  # pragma: allowlist secret
+        ),
+    )
+
+    # Test 1: Verify passwords excluded from dict serialization
+    account_dict = account.model_dump()
+    assert "password" not in account_dict.get("imap", {}), "IMAP password leaked in model_dump()"
+    assert "password" not in account_dict.get("smtp", {}), "SMTP password leaked in model_dump()"
+
+    # Test 2: Verify passwords excluded from JSON serialization
+    account_json = account.model_dump_json()
+    assert "SuperSecret-IMAP-Password123!" not in account_json, "IMAP password leaked in JSON"
+    assert "SuperSecret-SMTP-Password456!" not in account_json, "SMTP password leaked in JSON"
+
+    # Test 3: Scan JSON for credential patterns (security scanner check)
+    found_credentials = []
+    for pattern in CREDENTIAL_PATTERNS:
+        matches = pattern.findall(account_json)
+        found_credentials.extend(matches)
+
+    assert len(found_credentials) == 0, (
+        f"SECURITY VIOLATION: Credential patterns detected in serialized MailAccount: {found_credentials}"
+    )
+
+    # Test 4: Verify IMAP/SMTP configs individually also exclude passwords
+    imap_json = account.imap.model_dump_json()
+    smtp_json = account.smtp.model_dump_json()
+
+    assert "SuperSecret-IMAP-Password123!" not in imap_json, (
+        "IMAP password leaked in IMAPConfig JSON"
+    )
+    assert "SuperSecret-SMTP-Password456!" not in smtp_json, (
+        "SMTP password leaked in SMTPConfig JSON"
+    )
 
 
 @pytest.mark.security
