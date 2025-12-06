@@ -25,6 +25,7 @@ dependencies = [
     "typer>=0.20.0",       # CLI framework
     "structlog",           # Structured logging
     "rich",                # Rich console output for logging
+    "httpx>=0.27.0",       # Async HTTP client for Mozilla Autoconfig
 ]
 
 [project.optional-dependencies]
