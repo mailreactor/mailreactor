@@ -11,7 +11,7 @@ The console script entry point (mailreactor command) is defined in pyproject.tom
 import typer
 
 # Import server module to register commands
-from mailreactor.cli import server
+from mailreactor.cli import init, server
 from mailreactor.utils.version import get_app_version
 
 # Main CLI app with subcommands
@@ -54,6 +54,7 @@ def main_callback(
 
 
 # Register commands
+app.command("init", help="Interactive wizard for email account setup")(init.init_wizard)
 app.command("start")(server.start)
 app.command("dev", help="Start with auto-reload for development")(server.dev)
 

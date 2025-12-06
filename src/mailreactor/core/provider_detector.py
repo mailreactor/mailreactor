@@ -11,7 +11,7 @@ email domain. Detection strategy:
 Framework-agnostic: Zero FastAPI dependencies for library mode support.
 """
 
-import yaml  # type: ignore[import-untyped]
+import yaml
 import structlog
 import httpx
 import xml.etree.ElementTree as ET
