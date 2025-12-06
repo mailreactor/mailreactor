@@ -142,19 +142,6 @@ def start(
 
     This command starts the FastAPI server on the specified host and port.
     By default, the server binds to localhost (127.0.0.1) for security.
-
-    Examples:
-        # Start with defaults (localhost:8000, console logs)
-        mailreactor start
-
-        # Start on custom port with JSON logs
-        mailreactor start --port 3000 --json-logs
-
-        # Start on all interfaces (WARNING: network exposure)
-        mailreactor start --host 0.0.0.0
-
-        # Debug mode
-        mailreactor start --log-level DEBUG
     """
     _run_server(
         host=host,
@@ -184,20 +171,7 @@ def dev(
     """Start development server with auto-reload.
 
     This command starts the FastAPI server in development mode with file watching
-    enabled. The server will automatically reload when Python source files change
-    in the src/mailreactor/ directory.
-
-    WARNING: This mode is for local development only. Do NOT use in production.
-
-    Examples:
-        # Start dev server with defaults
-        mailreactor dev
-
-        # Custom port with INFO logging
-        mailreactor dev --port 3000 --log-level INFO
-
-        # Enable JSON logs (for testing log output)
-        mailreactor dev --json-logs
+    enabled. The server will automatically reload when Python source files change.
     """
     _run_server(
         host=host,
