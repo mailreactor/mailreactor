@@ -509,7 +509,7 @@ def test_default_suppresses_logs(
     tmp_path,
     monkeypatch,
 ):
-    """AC-7: Default (no --verbose) sets ERROR log level to suppress DEBUG/INFO logs."""
+    """AC-7: Default (no --verbose) sets CRITICAL log level to suppress DEBUG/INFO/WARNING/ERROR logs."""
     monkeypatch.chdir(tmp_path)
 
     # Mock Gmail detection
@@ -541,11 +541,11 @@ def test_default_suppresses_logs(
     # Verify success
     assert result.exit_code == 0, f"Exit code {result.exit_code}, stdout:\n{result.stdout}"
 
-    # Verify structlog.configure was called with ERROR log level (suppresses DEBUG/INFO)
+    # Verify structlog.configure was called with CRITICAL log level (suppresses DEBUG/INFO/WARNING/ERROR)
     mock_structlog_configure.assert_called_once()
     call_kwargs = mock_structlog_configure.call_args.kwargs
 
-    # Check wrapper_class is make_filtering_bound_logger with ERROR level
+    # Check wrapper_class is make_filtering_bound_logger with CRITICAL level
 
     wrapper = call_kwargs["wrapper_class"]
     assert wrapper is not None

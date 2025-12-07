@@ -16,12 +16,12 @@ Those are data, not code. Changing providers.yaml should not break tests.
 import pytest
 from unittest.mock import AsyncMock, patch, Mock
 from mailreactor.core.provider_detector import (
-    load_providers,
-    extract_domain,
-    detect_provider,
     _parse_autoconfig_xml,
+    detect_provider,
     detect_via_mozilla_autoconfig,
-    get_app_password_hint,
+    extract_domain,
+    get_provider_hint,
+    load_providers,
 )
 from mailreactor.models.account import ProviderConfig
 
@@ -449,7 +449,7 @@ class TestGetAppPasswordHint:
 
     def test_gmail_returns_hint_with_link(self):
         """Test Gmail domain returns App Password hint."""
-        hint = get_app_password_hint("gmail.com")
+        hint = get_provider_hint("gmail.com")
 
         assert hint is not None
         assert "Gmail" in hint
@@ -458,14 +458,14 @@ class TestGetAppPasswordHint:
 
     def test_googlemail_returns_same_hint_as_gmail(self):
         """Test googlemail.com alias returns Gmail hint."""
-        hint = get_app_password_hint("googlemail.com")
+        hint = get_provider_hint("googlemail.com")
 
         assert hint is not None
         assert "Gmail" in hint
 
     def test_outlook_returns_hint_with_link(self):
         """Test Outlook domain returns App Password hint."""
-        hint = get_app_password_hint("outlook.com")
+        hint = get_provider_hint("outlook.com")
 
         assert hint is not None
         assert "Outlook" in hint
@@ -473,7 +473,7 @@ class TestGetAppPasswordHint:
 
     def test_yahoo_returns_hint_with_link(self):
         """Test Yahoo domain returns App Password hint."""
-        hint = get_app_password_hint("yahoo.com")
+        hint = get_provider_hint("yahoo.com")
 
         assert hint is not None
         assert "Yahoo" in hint
@@ -481,7 +481,7 @@ class TestGetAppPasswordHint:
 
     def test_icloud_returns_hint_with_link(self):
         """Test iCloud domain returns App Password hint."""
-        hint = get_app_password_hint("icloud.com")
+        hint = get_provider_hint("icloud.com")
 
         assert hint is not None
         assert "iCloud" in hint
@@ -489,13 +489,13 @@ class TestGetAppPasswordHint:
 
     def test_unknown_domain_returns_none(self):
         """Test unknown domain returns None."""
-        hint = get_app_password_hint("custom-domain.com")
+        hint = get_provider_hint("custom-domain.com")
 
         assert hint is None
 
     def test_case_insensitive_matching(self):
         """Test hint lookup is case-insensitive."""
-        hint = get_app_password_hint("GMAIL.COM")
+        hint = get_provider_hint("GMAIL.COM")
 
         assert hint is not None
         assert "Gmail" in hint

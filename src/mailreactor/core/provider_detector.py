@@ -362,7 +362,7 @@ async def detect_via_mozilla_autoconfig(domain: str) -> Optional[ProviderConfig]
     return None
 
 
-def get_app_password_hint(domain: str) -> Optional[str]:
+def get_provider_hint(domain: str) -> Optional[str]:
     """Get provider-specific App Password setup guidance for Gmail, Outlook, Yahoo, iCloud.
 
     Used by connection validator (Story 2.5) to provide helpful error messages

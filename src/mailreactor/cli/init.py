@@ -35,7 +35,7 @@ from imapclient.exceptions import IMAPClientError
 from pydantic import EmailStr, TypeAdapter, ValidationError
 from rich.console import Console
 
-from mailreactor.core.provider_detector import detect_provider, get_app_password_hint
+from mailreactor.core.provider_detector import detect_provider, get_provider_hint
 from mailreactor.models.account import IMAPConfig, ProviderConfig, SMTPConfig
 
 console = Console()
@@ -82,6 +82,8 @@ def init_wizard(
     - !encrypted YAML tag
     """
     # Configure structlog for wizard (AC-7)
+    # In normal mode: CRITICAL level (suppresses DEBUG/INFO/WARNING/ERROR)
+    # In verbose mode: DEBUG level (shows all logs)
     structlog.configure(
         processors=[
             structlog.contextvars.merge_contextvars,
@@ -89,7 +91,7 @@ def init_wizard(
             structlog.dev.ConsoleRenderer(colors=True),  # No timestamp processor
         ],
         wrapper_class=structlog.make_filtering_bound_logger(
-            logging.DEBUG if verbose else logging.ERROR
+            logging.DEBUG if verbose else logging.CRITICAL
         ),
     )
 
@@ -116,6 +118,14 @@ def init_wizard(
         # Ctrl+C handling
         typer.echo("\nConfiguration cancelled")
         raise typer.Exit(1)
+
+    # Show proactive App Password hint for major providers (Story 2.4.1)
+    domain = email.split("@")[1].lower()
+    hint = get_provider_hint(domain)
+    if hint:
+        typer.echo()
+        typer.echo(f"💡 {hint}")
+        typer.echo()
 
     # Prompt for password (hidden input)
     try:
@@ -174,15 +184,6 @@ def init_wizard(
                 typer.echo()
             else:
                 console.print(imap_error)
-
-                # Show provider-specific hint for auth failures
-                if imap_error and "authentication failed" in imap_error.lower():
-                    domain = email.split("@")[1].lower()
-                    hint = get_app_password_hint(domain)
-                    if hint:
-                        typer.echo()
-                        typer.echo(hint)
-
                 raise typer.Exit(1)
 
         # SMTP configuration prompts with editable defaults (only after IMAP succeeds)
@@ -212,15 +213,6 @@ def init_wizard(
                 typer.echo()
             else:
                 console.print(smtp_error)
-
-                # Show provider-specific hint for auth failures
-                if smtp_error and "authentication failed" in smtp_error.lower():
-                    domain = email.split("@")[1].lower()
-                    hint = get_app_password_hint(domain)
-                    if hint:
-                        typer.echo()
-                        typer.echo(hint)
-
                 raise typer.Exit(1)
 
     except (KeyboardInterrupt, EOFError):
