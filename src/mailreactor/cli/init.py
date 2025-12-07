@@ -164,17 +164,17 @@ def init_wizard(
         # IMAP configuration prompts with editable defaults
         imap_config = _prompt_imap_config_unified(email, initial_password, provider_config)
 
-        # IMAP validation with config summary (AC-4)
-        if not no_validation:
-            # Show IMAP config summary before validation
-            typer.echo()
-            typer.echo("IMAP Configuration:")
-            typer.echo(f"  Host: {imap_config.host}")
-            typer.echo(f"  Port: {imap_config.port}")
-            typer.echo(f"  SSL: {imap_config.ssl}")
-            typer.echo(f"  Username: {imap_config.username}")
-            typer.echo()
+        # Show IMAP config summary (always displayed)
+        typer.echo()
+        typer.echo("IMAP Configuration:")
+        typer.echo(f"  Host: {imap_config.host}")
+        typer.echo(f"  Port: {imap_config.port}")
+        typer.echo(f"  SSL: {imap_config.ssl}")
+        typer.echo(f"  Username: {imap_config.username}")
+        typer.echo()
 
+        # IMAP validation (AC-4)
+        if not no_validation:
             # Validate IMAP immediately (early exit on failure per AC-4)
             with console.status("⠋ Testing IMAP connection..."):
                 imap_success, imap_error = _run_async(_validate_imap_connection(imap_config))
@@ -193,17 +193,17 @@ def init_wizard(
             provider_config,  # SMTP password defaults to IMAP password (AC-6)
         )
 
-        # SMTP validation with config summary (AC-4)
-        if not no_validation:
-            # Show SMTP config summary before validation
-            typer.echo()
-            typer.echo("SMTP Configuration:")
-            typer.echo(f"  Host: {smtp_config.host}")
-            typer.echo(f"  Port: {smtp_config.port}")
-            typer.echo(f"  STARTTLS: {smtp_config.starttls}")
-            typer.echo(f"  Username: {smtp_config.username}")
-            typer.echo()
+        # Show SMTP config summary (always displayed)
+        typer.echo()
+        typer.echo("SMTP Configuration:")
+        typer.echo(f"  Host: {smtp_config.host}")
+        typer.echo(f"  Port: {smtp_config.port}")
+        typer.echo(f"  STARTTLS: {smtp_config.starttls}")
+        typer.echo(f"  Username: {smtp_config.username}")
+        typer.echo()
 
+        # SMTP validation (AC-4)
+        if not no_validation:
             # Validate SMTP
             with console.status("⠋ Testing SMTP connection..."):
                 smtp_success, smtp_error = _run_async(_validate_smtp_connection(smtp_config))
