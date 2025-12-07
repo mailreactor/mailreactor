@@ -241,8 +241,8 @@ def _prompt_imap_config(email: str, default_password: str) -> IMAPConfig:
     imap_host = typer.prompt("IMAP server")
     imap_port = typer.prompt("IMAP port", default=993, type=int)
 
-    # Y/n prompt for SSL
-    imap_ssl_input = typer.prompt("IMAP SSL", default="Y")
+    # Y/n prompt for SSL (default Y)
+    imap_ssl_input = typer.prompt("IMAP SSL [Y/n]", default="Y", show_default=False)
     imap_ssl = imap_ssl_input.lower() in ["y", "yes", ""]
 
     imap_username = typer.prompt("IMAP username", default=email)
@@ -270,8 +270,8 @@ def _prompt_smtp_config(email: str, default_password: str) -> SMTPConfig:
     smtp_host = typer.prompt("SMTP server")
     smtp_port = typer.prompt("SMTP port", default=587, type=int)
 
-    # Y/n prompt for STARTTLS
-    smtp_starttls_input = typer.prompt("SMTP STARTTLS", default="Y")
+    # Y/n prompt for STARTTLS (default Y)
+    smtp_starttls_input = typer.prompt("SMTP STARTTLS [Y/n]", default="Y", show_default=False)
     smtp_starttls = smtp_starttls_input.lower() in ["y", "yes", ""]
 
     smtp_username = typer.prompt("SMTP username", default=email)

@@ -57,7 +57,7 @@ class IMAPConfig(BaseModel):
     port: int = Field(993, description="IMAP server port", ge=1, le=65535)
     ssl: bool = Field(True, description="Use SSL for IMAP connection")
     username: str = Field(..., description="IMAP username (usually email)", min_length=1)
-    password: str = Field(..., description="IMAP password", exclude=True, min_length=1)
+    password: str = Field(..., description="IMAP password", exclude=True)
 
 
 class SMTPConfig(BaseModel):
@@ -83,7 +83,7 @@ class SMTPConfig(BaseModel):
     port: int = Field(587, description="SMTP server port", ge=1, le=65535)
     starttls: bool = Field(True, description="Use STARTTLS for SMTP connection")
     username: str = Field(..., description="SMTP username (usually email)", min_length=1)
-    password: str = Field(..., description="SMTP password", exclude=True, min_length=1)
+    password: str = Field(..., description="SMTP password", exclude=True)
 
 
 class MailAccount(BaseModel):
