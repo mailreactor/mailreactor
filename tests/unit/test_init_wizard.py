@@ -53,7 +53,10 @@ def test_happy_path_gmail_auto_detection(
     tmp_path,
     monkeypatch,
 ):
-    """AC Flow 3: Gmail user with successful auto-detection and validation."""
+    """AC Flow 3: Gmail user with successful auto-detection and validation (Story 2.4 course correction).
+
+    Unified flow: Auto-detected values shown as defaults, user presses Enter to accept.
+    """
     monkeypatch.chdir(tmp_path)
 
     # Mock provider detection (Gmail)
@@ -69,20 +72,42 @@ def test_happy_path_gmail_auto_detection(
         smtp_starttls=True,
     )
 
-    # Mock password input
-    mock_getpass.return_value = "test-password"
+    # Mock password inputs (initial, IMAP [REDACTED], SMTP [REDACTED])
+    # User presses Enter at IMAP/SMTP password prompts to use defaults
+    mock_getpass.side_effect = [
+        "test-password",
+        "",
+        "",
+    ]  # Initial, IMAP (use initial), SMTP (use IMAP)
 
     # Mock connection validation (both succeed)
     mock_imap_validate.return_value = (True, None)
     mock_smtp_validate.return_value = (True, None)
 
-    # Run init command with valid email
-    result = runner.invoke(app, ["init"], input="user@gmail.com\n")
+    # Run init command with unified flow inputs
+    # Unified flow prompts (all defaults accepted with Enter):
+    user_input = (
+        "user@gmail.com\n"  # Email
+        # Password via getpass (initial)
+        "\n"  # IMAP server [imap.gmail.com] - accept default
+        "\n"  # IMAP port [993] - accept default
+        "\n"  # IMAP SSL [Y] - accept default
+        "\n"  # IMAP username [user@gmail.com] - accept default
+        # IMAP password [REDACTED] via getpass - accept default (empty string)
+        "\n"  # SMTP server [smtp.gmail.com] - accept default
+        "\n"  # SMTP port [587] - accept default
+        "\n"  # SMTP STARTTLS [Y] - accept default
+        "\n"  # SMTP username [user@gmail.com] - accept default
+        # SMTP password [REDACTED] via getpass - accept default (empty string)
+    )
+    result = runner.invoke(app, ["init"], input=user_input)
 
     # Verify success
-    assert result.exit_code == 0
+    assert result.exit_code == 0, f"Exit code {result.exit_code}, stdout:\n{result.stdout}"
     assert "Found settings for Gmail" in result.stdout
+    assert "IMAP Configuration:" in result.stdout  # Per-protocol summary (AC-4)
     assert "✓ IMAP connection successful" in result.stdout
+    assert "SMTP Configuration:" in result.stdout  # Per-protocol summary (AC-4)
     assert "✓ SMTP connection successful" in result.stdout
     assert "Configuration saved to mailreactor.yaml" in result.stdout
 
@@ -154,7 +179,7 @@ def test_imap_authentication_failure_with_hint(
     tmp_path,
     monkeypatch,
 ):
-    """AC Flow 6: Gmail auth failure shows App Password hint."""
+    """AC Flow 6: Gmail auth failure shows App Password hint (Story 2.4 course correction)."""
     monkeypatch.chdir(tmp_path)
 
     # Mock Gmail detection
@@ -170,14 +195,23 @@ def test_imap_authentication_failure_with_hint(
         smtp_starttls=True,
     )
 
-    # Mock password
-    mock_getpass.return_value = "wrong-password"
+    # Mock password (initial, IMAP [REDACTED])
+    mock_getpass.side_effect = ["wrong-password", ""]  # Initial, IMAP (use initial)
 
     # Mock IMAP auth failure
     mock_imap_validate.return_value = (False, "IMAP authentication failed for user@gmail.com")
 
-    # Run init command
-    result = runner.invoke(app, ["init"], input="user@gmail.com\n")
+    # Run init command with unified flow inputs
+    user_input = (
+        "user@gmail.com\n"  # Email
+        # Password via getpass (initial)
+        "\n"  # IMAP server [imap.gmail.com] - accept default
+        "\n"  # IMAP port [993] - accept default
+        "\n"  # IMAP SSL [Y] - accept default
+        "\n"  # IMAP username [user@gmail.com] - accept default
+        # IMAP password [REDACTED] via getpass - accept default (empty = use initial)
+    )
+    result = runner.invoke(app, ["init"], input=user_input)
 
     # Verify failure with hint
     assert result.exit_code == 1
@@ -196,7 +230,7 @@ def test_imap_connection_timeout(
     tmp_path,
     monkeypatch,
 ):
-    """AC Flow 8: IMAP connection timeout."""
+    """AC Flow 8: IMAP connection timeout (Story 2.4 course correction)."""
     monkeypatch.chdir(tmp_path)
 
     # Mock detection
@@ -212,14 +246,23 @@ def test_imap_connection_timeout(
         smtp_starttls=True,
     )
 
-    # Mock password
-    mock_getpass.return_value = "password"
+    # Mock password (initial, IMAP [REDACTED])
+    mock_getpass.side_effect = ["password", ""]  # Initial, IMAP (use initial)
 
     # Mock IMAP timeout
     mock_imap_validate.return_value = (False, "Could not connect to imap.test.com:993 (timeout)")
 
-    # Run init command
-    result = runner.invoke(app, ["init"], input="user@test.com\n")
+    # Run init command with unified flow inputs
+    user_input = (
+        "user@test.com\n"  # Email
+        # Password via getpass (initial)
+        "\n"  # IMAP server [imap.test.com] - accept default
+        "\n"  # IMAP port [993] - accept default
+        "\n"  # IMAP SSL [Y] - accept default
+        "\n"  # IMAP username [user@test.com] - accept default
+        # IMAP password [REDACTED] via getpass - accept default (empty = use initial)
+    )
+    result = runner.invoke(app, ["init"], input=user_input)
 
     # Verify failure
     assert result.exit_code == 1
@@ -240,7 +283,7 @@ def test_ctrl_c_during_password_prompt(tmp_path, monkeypatch):
 
 
 def test_yaml_structure_with_placeholder_passwords(tmp_path, monkeypatch):
-    """Verify mailreactor.yaml has correct structure with PLACEHOLDER_PASSWORD."""
+    """Verify mailreactor.yaml has correct structure with PLACEHOLDER_PASSWORD (Story 2.4 course correction)."""
     monkeypatch.chdir(tmp_path)
 
     # Mock all dependencies
@@ -248,7 +291,7 @@ def test_yaml_structure_with_placeholder_passwords(tmp_path, monkeypatch):
         patch("mailreactor.cli.init.detect_provider") as mock_detect,
         patch("mailreactor.cli.init._validate_imap_connection") as mock_imap,
         patch("mailreactor.cli.init._validate_smtp_connection") as mock_smtp,
-        patch("mailreactor.cli.init.getpass.getpass", return_value="test-password"),
+        patch("mailreactor.cli.init.getpass.getpass") as mock_getpass,
     ):
         # Mock Gmail detection
         from mailreactor.models.account import ProviderConfig
@@ -263,12 +306,33 @@ def test_yaml_structure_with_placeholder_passwords(tmp_path, monkeypatch):
             smtp_starttls=True,
         )
 
+        # Mock passwords (initial, IMAP [REDACTED], SMTP [REDACTED])
+        mock_getpass.side_effect = [
+            "test-password",
+            "",
+            "",
+        ]  # Initial, IMAP (use initial), SMTP (use IMAP)
+
         # Mock validation success
         mock_imap.return_value = (True, None)
         mock_smtp.return_value = (True, None)
 
-        # Run init
-        result = runner.invoke(app, ["init"], input="user@gmail.com\n")
+        # Run init with unified flow inputs
+        user_input = (
+            "user@gmail.com\n"  # Email
+            # Password via getpass (initial)
+            "\n"  # IMAP server [imap.gmail.com] - accept default
+            "\n"  # IMAP port [993] - accept default
+            "\n"  # IMAP SSL [Y] - accept default
+            "\n"  # IMAP username [user@gmail.com] - accept default
+            # IMAP password [REDACTED] via getpass - accept default (empty = use initial)
+            "\n"  # SMTP server [smtp.gmail.com] - accept default
+            "\n"  # SMTP port [587] - accept default
+            "\n"  # SMTP STARTTLS [Y] - accept default
+            "\n"  # SMTP username [user@gmail.com] - accept default
+            # SMTP password [REDACTED] via getpass - accept default (empty = use IMAP)
+        )
+        result = runner.invoke(app, ["init"], input=user_input)
         assert result.exit_code == 0
 
     # Read YAML and verify structure

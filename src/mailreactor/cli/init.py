@@ -9,13 +9,18 @@ The wizard guides users through:
 
 Usage:
     mailreactor init
+    mailreactor init --no-autoconfig  # Skip auto-detection
+    mailreactor init --no-validation  # Skip connection validation (offline mode)
+    mailreactor init --verbose        # Show debug logs
 
 Story 2.4 creates plaintext config (placeholder passwords).
+Story 2.4 course correction adds flags and unified wizard flow.
 Story 2.5 will add master password encryption.
 """
 
 import asyncio
 import getpass
+import logging
 import socket
 import ssl as ssl_module
 from pathlib import Path
@@ -31,7 +36,7 @@ from pydantic import EmailStr, TypeAdapter, ValidationError
 from rich.console import Console
 
 from mailreactor.core.provider_detector import detect_provider, get_app_password_hint
-from mailreactor.models.account import IMAPConfig, SMTPConfig
+from mailreactor.models.account import IMAPConfig, ProviderConfig, SMTPConfig
 
 console = Console()
 logger = structlog.get_logger()
@@ -40,34 +45,61 @@ logger = structlog.get_logger()
 T = TypeVar("T")
 
 
-def init_wizard() -> None:
+def init_wizard(
+    no_autoconfig: bool = typer.Option(
+        False, "--no-autoconfig", help="Skip auto-detection, manual config only"
+    ),
+    no_validation: bool = typer.Option(
+        False, "--no-validation", help="Skip connection validation (offline mode)"
+    ),
+    verbose: bool = typer.Option(False, "--verbose", help="Show debug logs (structlog output)"),
+) -> None:
     """Interactive wizard for email account setup.
 
     Creates mailreactor.yaml in current directory with account credentials.
 
-    Flow (Story 2.4 MVP - plaintext passwords):
+    Args:
+        no_autoconfig: Skip auto-detection, go directly to manual prompts
+        no_validation: Skip IMAP/SMTP connection validation (offline mode)
+        verbose: Show structlog DEBUG logs (default: ERROR level only)
+
+    Flow (Story 2.4 course correction):
     1. Check for existing config file (exit if found)
-    2. Prompt for email address (validate with Pydantic EmailStr)
-    3. Prompt for password (hidden input via getpass)
-    4. Auto-detect provider settings (local → Mozilla → ISP → manual)
-    5. Validate IMAP connection (inline implementation)
-    6. Validate SMTP connection (inline implementation)
-    7. Create mailreactor.yaml with placeholder passwords
-    8. Set file permissions to 0600
-    9. Display success message with next steps
+    2. Configure structlog based on verbose flag
+    3. Prompt for email address (validate with Pydantic EmailStr)
+    4. Prompt for password (hidden input via getpass)
+    5. Auto-detect provider settings if not --no-autoconfig
+    6. Show prompts with detected values as defaults (unified flow)
+    7. Show IMAP config summary and validate if not --no-validation
+    8. Show SMTP config summary and validate if not --no-validation
+    9. Create mailreactor.yaml with placeholder passwords
+    10. Set file permissions to 0600
+    11. Display success message with next steps
 
     Story 2.5 will add:
     - Master password prompts
     - Password encryption (PBKDF2 + Fernet)
     - !encrypted YAML tag
     """
+    # Configure structlog for wizard (AC-7)
+    structlog.configure(
+        processors=[
+            structlog.contextvars.merge_contextvars,
+            structlog.processors.add_log_level,
+            structlog.dev.ConsoleRenderer(colors=True),  # No timestamp processor
+        ],
+        wrapper_class=structlog.make_filtering_bound_logger(
+            logging.DEBUG if verbose else logging.ERROR
+        ),
+    )
+
     # Check for existing config file (fail fast)
     config_path = Path("mailreactor.yaml")
     if config_path.exists():
         typer.echo("mailreactor.yaml already exists")
         raise typer.Exit(1)
 
-    # Display wizard header
+    # Display wizard header (always the same, no mode indicators per HC correction)
     typer.echo("Mail Reactor Setup Wizard")
     typer.echo()
 
@@ -96,95 +128,104 @@ def init_wizard() -> None:
 
     typer.echo()
 
-    # Auto-detect provider settings with spinner
-    try:
-        with console.status("⠋ Detecting mail server settings..."):
-            provider_config = _run_async(detect_provider(email))
-    except (KeyboardInterrupt, EOFError):
-        typer.echo("\nConfiguration cancelled")
-        raise typer.Exit(1)
-
-    # Display detection result
-    if provider_config:
-        console.print(f"Found settings for {provider_config.provider_name} ✓")
-        typer.echo()
-
-        # Build IMAP/SMTP configs from detected provider
-        imap_config = IMAPConfig(
-            host=provider_config.imap_host,
-            port=provider_config.imap_port,
-            ssl=provider_config.imap_ssl,
-            username=email,  # Assume username = email (MVP)
-            password=password,  # Use same password for IMAP (MVP)
-        )
-        smtp_config = SMTPConfig(
-            host=provider_config.smtp_host,
-            port=provider_config.smtp_port,
-            starttls=provider_config.smtp_starttls,
-            username=email,  # Assume username = email (MVP)
-            password=password,  # Use same password for SMTP (MVP)
-        )
-    else:
-        console.print("Unable to detect mail server settings")
-        typer.echo()
-
-        # Manual configuration prompts
+    # Auto-detect provider settings with spinner (AC-2: skip if --no-autoconfig)
+    provider_config: Optional[ProviderConfig] = None
+    if not no_autoconfig:
         try:
-            imap_config = _prompt_imap_config(email, password)
-            smtp_config = _prompt_smtp_config(email, password)
+            with console.status("⠋ Detecting mail server settings..."):
+                provider_config = _run_async(detect_provider(email))
         except (KeyboardInterrupt, EOFError):
             typer.echo("\nConfiguration cancelled")
             raise typer.Exit(1)
 
-    # Validate IMAP connection with spinner
-    try:
-        with console.status("⠋ Testing IMAP connection..."):
-            imap_success, imap_error = _run_async(_validate_imap_connection(imap_config))
-
-        if imap_success:
-            console.print("✓ IMAP connection successful")
+        # Display detection result
+        if provider_config:
+            console.print(f"Found settings for {provider_config.provider_name} ✓")
+            typer.echo()
         else:
-            console.print(imap_error)
+            console.print("Unable to detect mail server settings")
+            typer.echo()
 
-            # Show provider-specific hint for auth failures
-            if imap_error and "authentication failed" in imap_error.lower():
-                domain = email.split("@")[1].lower()
-                hint = get_app_password_hint(domain)
-                if hint:
-                    typer.echo()
-                    typer.echo(hint)
+    # Unified wizard flow (AC-5): Always prompt, use detected values as defaults
+    try:
+        # Store initial password for defaults (AC-6)
+        initial_password = password
 
-            raise typer.Exit(1)
+        # IMAP configuration prompts with editable defaults
+        imap_config = _prompt_imap_config_unified(email, initial_password, provider_config)
+
+        # IMAP validation with config summary (AC-4)
+        if not no_validation:
+            # Show IMAP config summary before validation
+            typer.echo()
+            typer.echo("IMAP Configuration:")
+            typer.echo(f"  Host: {imap_config.host}")
+            typer.echo(f"  Port: {imap_config.port}")
+            typer.echo(f"  SSL: {imap_config.ssl}")
+            typer.echo(f"  Username: {imap_config.username}")
+            typer.echo()
+
+            # Validate IMAP immediately (early exit on failure per AC-4)
+            with console.status("⠋ Testing IMAP connection..."):
+                imap_success, imap_error = _run_async(_validate_imap_connection(imap_config))
+
+            if imap_success:
+                console.print("✓ IMAP connection successful")
+                typer.echo()
+            else:
+                console.print(imap_error)
+
+                # Show provider-specific hint for auth failures
+                if imap_error and "authentication failed" in imap_error.lower():
+                    domain = email.split("@")[1].lower()
+                    hint = get_app_password_hint(domain)
+                    if hint:
+                        typer.echo()
+                        typer.echo(hint)
+
+                raise typer.Exit(1)
+
+        # SMTP configuration prompts with editable defaults (only after IMAP succeeds)
+        smtp_config = _prompt_smtp_config_unified(
+            email,
+            imap_config.password,
+            provider_config,  # SMTP password defaults to IMAP password (AC-6)
+        )
+
+        # SMTP validation with config summary (AC-4)
+        if not no_validation:
+            # Show SMTP config summary before validation
+            typer.echo()
+            typer.echo("SMTP Configuration:")
+            typer.echo(f"  Host: {smtp_config.host}")
+            typer.echo(f"  Port: {smtp_config.port}")
+            typer.echo(f"  STARTTLS: {smtp_config.starttls}")
+            typer.echo(f"  Username: {smtp_config.username}")
+            typer.echo()
+
+            # Validate SMTP
+            with console.status("⠋ Testing SMTP connection..."):
+                smtp_success, smtp_error = _run_async(_validate_smtp_connection(smtp_config))
+
+            if smtp_success:
+                console.print("✓ SMTP connection successful")
+                typer.echo()
+            else:
+                console.print(smtp_error)
+
+                # Show provider-specific hint for auth failures
+                if smtp_error and "authentication failed" in smtp_error.lower():
+                    domain = email.split("@")[1].lower()
+                    hint = get_app_password_hint(domain)
+                    if hint:
+                        typer.echo()
+                        typer.echo(hint)
+
+                raise typer.Exit(1)
+
     except (KeyboardInterrupt, EOFError):
         typer.echo("\nConfiguration cancelled")
         raise typer.Exit(1)
-
-    typer.echo()
-
-    # Validate SMTP connection with spinner
-    try:
-        with console.status("⠋ Testing SMTP connection..."):
-            smtp_success, smtp_error = _run_async(_validate_smtp_connection(smtp_config))
-
-        if smtp_success:
-            console.print("✓ SMTP connection successful")
-        else:
-            console.print(smtp_error)
-
-            # Show provider-specific hint for auth failures
-            if smtp_error and "authentication failed" in smtp_error.lower():
-                domain = email.split("@")[1].lower()
-                hint = get_app_password_hint(domain)
-                if hint:
-                    typer.echo()
-                    typer.echo(hint)
-
-            raise typer.Exit(1)
-    except (KeyboardInterrupt, EOFError):
-        typer.echo("\nConfiguration cancelled")
-        raise typer.Exit(1)
-
-    typer.echo()
 
     # Create mailreactor.yaml with placeholder passwords (Story 2.4 MVP)
     yaml_data = {
@@ -217,7 +258,7 @@ def init_wizard() -> None:
             # Windows may not support POSIX permissions
             logger.warning("file_permissions_not_set", reason="platform_unsupported", error=str(e))
 
-        # Success message
+        # Success message (always the same, no validation note per HC correction)
         console.print("Configuration saved to mailreactor.yaml")
         typer.echo()
         typer.echo("To start the server:")
@@ -228,8 +269,99 @@ def init_wizard() -> None:
         raise typer.Exit(1)
 
 
+def _prompt_imap_config_unified(
+    email: str, default_password: str, provider_config: Optional[ProviderConfig]
+) -> IMAPConfig:
+    """Prompt for IMAP configuration with auto-detected defaults (unified flow - AC-5).
+
+    Args:
+        email: Email address (used as default username)
+        default_password: Password from initial prompt (used as IMAP password default)
+        provider_config: Auto-detected provider settings (None if detection failed/skipped)
+
+    Returns:
+        IMAPConfig with user-provided or defaulted settings
+    """
+    # Extract defaults from provider config or use standard defaults
+    default_host = provider_config.imap_host if provider_config else ""
+    default_port = provider_config.imap_port if provider_config else 993
+    default_ssl = provider_config.imap_ssl if provider_config else True
+
+    # Always prompt with defaults (unified code path)
+    imap_host = typer.prompt("IMAP server", default=default_host if default_host else None)
+    imap_port = typer.prompt("IMAP port", default=default_port, type=int)
+
+    # Y/n prompt for SSL with default
+    ssl_default_str = "Y" if default_ssl else "n"
+    imap_ssl_input = typer.prompt("IMAP SSL", default=ssl_default_str, show_default=True)
+    imap_ssl = imap_ssl_input.lower() in ["y", "yes"]
+
+    imap_username = typer.prompt("IMAP username", default=email)
+
+    # Password prompt with REDACTED hint (AC-6 - HC correction)
+    # User cannot see password, but Enter uses default_password value
+    imap_password_input = getpass.getpass("IMAP password [REDACTED]: ")
+    imap_password = imap_password_input if imap_password_input else default_password
+
+    return IMAPConfig(
+        host=imap_host,
+        port=imap_port,
+        ssl=imap_ssl,
+        username=imap_username,
+        password=imap_password,
+    )
+
+
+def _prompt_smtp_config_unified(
+    email: str, default_password: str, provider_config: Optional[ProviderConfig]
+) -> SMTPConfig:
+    """Prompt for SMTP configuration with auto-detected defaults (unified flow - AC-5).
+
+    Args:
+        email: Email address (used as default username)
+        default_password: IMAP password (used as SMTP password default per AC-6)
+        provider_config: Auto-detected provider settings (None if detection failed/skipped)
+
+    Returns:
+        SMTPConfig with user-provided or defaulted settings
+    """
+    # Extract defaults from provider config or use standard defaults
+    default_host = provider_config.smtp_host if provider_config else ""
+    default_port = provider_config.smtp_port if provider_config else 587
+    default_starttls = provider_config.smtp_starttls if provider_config else True
+
+    # Always prompt with defaults (unified code path)
+    smtp_host = typer.prompt("SMTP server", default=default_host if default_host else None)
+    smtp_port = typer.prompt("SMTP port", default=default_port, type=int)
+
+    # Y/n prompt for STARTTLS with default
+    starttls_default_str = "Y" if default_starttls else "n"
+    smtp_starttls_input = typer.prompt(
+        "SMTP STARTTLS", default=starttls_default_str, show_default=True
+    )
+    smtp_starttls = smtp_starttls_input.lower() in ["y", "yes"]
+
+    smtp_username = typer.prompt("SMTP username", default=email)
+
+    # Password prompt with REDACTED hint (AC-6 - HC correction)
+    # Default is IMAP password (password cascade: initial → IMAP → SMTP)
+    smtp_password_input = getpass.getpass("SMTP password [REDACTED]: ")
+    smtp_password = smtp_password_input if smtp_password_input else default_password
+
+    return SMTPConfig(
+        host=smtp_host,
+        port=smtp_port,
+        starttls=smtp_starttls,
+        username=smtp_username,
+        password=smtp_password,
+    )
+
+
 def _prompt_imap_config(email: str, default_password: str) -> IMAPConfig:
-    """Prompt for IMAP configuration when auto-detection fails.
+    """[DEPRECATED] Prompt for IMAP configuration when auto-detection fails.
+
+    This function is preserved for backward compatibility but is no longer used.
+    Use _prompt_imap_config_unified() instead (Story 2.4 course correction).
 
     Args:
         email: Email address (used as default username)
@@ -258,7 +390,10 @@ def _prompt_imap_config(email: str, default_password: str) -> IMAPConfig:
 
 
 def _prompt_smtp_config(email: str, default_password: str) -> SMTPConfig:
-    """Prompt for SMTP configuration after IMAP validation.
+    """[DEPRECATED] Prompt for SMTP configuration after IMAP validation.
+
+    This function is preserved for backward compatibility but is no longer used.
+    Use _prompt_smtp_config_unified() instead (Story 2.4 course correction).
 
     Args:
         email: Email address (used as default username)
