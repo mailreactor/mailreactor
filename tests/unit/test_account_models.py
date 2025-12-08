@@ -13,7 +13,13 @@ We do NOT test:
 """
 
 from datetime import datetime, timezone
+
+import pytest
+from cryptography.fernet import InvalidToken
+
+from mailreactor.core.config import load_config, save_config
 from mailreactor.models.account import (
+    AccountConfig,
     ProviderConfig,
     IMAPConfig,
     SMTPConfig,
@@ -151,3 +157,80 @@ class TestDesignPatterns:
         assert account.imap.username == "shared@company.com"
         assert account.smtp.username == "relay@sendgrid.com"
         assert account.imap.host != account.smtp.host
+
+
+class TestAccountConfigFromYAML:
+    """Test AccountConfig.from_yaml() classmethod (AC-5)."""
+
+    @pytest.fixture
+    def sample_account_config(self):
+        """Sample AccountConfig for testing."""
+        return AccountConfig(
+            email="test@gmail.com",
+            imap=IMAPConfig(
+                host="imap.gmail.com",
+                port=993,
+                ssl=True,
+                username="test@gmail.com",
+                password="originalImapPassword",  # pragma: allowlist secret
+            ),
+            smtp=SMTPConfig(
+                host="smtp.gmail.com",
+                port=587,
+                starttls=True,
+                username="test@gmail.com",
+                password="originalSmtpPassword",  # pragma: allowlist secret
+            ),
+        )
+
+    def test_from_yaml_decrypts_passwords(self, tmp_path, sample_account_config):
+        """Verify from_yaml() decrypts passwords correctly (AC-5)."""
+        config_path = tmp_path / "mailreactor.yaml"
+        master_password = "masterPassword"  # pragma: allowlist secret
+
+        # Save config with encryption
+        save_config(config_path, sample_account_config, master_password)
+
+        # Load and decrypt
+        yaml_data = load_config(config_path)
+        loaded = AccountConfig.from_yaml(yaml_data, master_password)
+
+        # Verify passwords were decrypted correctly
+        assert loaded.imap.password == sample_account_config.imap.password
+        assert loaded.smtp.password == sample_account_config.smtp.password
+
+    def test_from_yaml_wrong_password_raises_error(self, tmp_path, sample_account_config):
+        """Verify wrong master password fails (AC-7)."""
+        config_path = tmp_path / "mailreactor.yaml"
+
+        # Save with correct password
+        save_config(config_path, sample_account_config, "correctMaster")
+
+        # Try to load with wrong password
+        yaml_data = load_config(config_path)
+
+        with pytest.raises(InvalidToken):
+            AccountConfig.from_yaml(yaml_data, "wrongMaster")
+
+    def test_from_yaml_creates_valid_account_config(self, tmp_path, sample_account_config):
+        """Verify from_yaml() preserves all fields (AC-5)."""
+        config_path = tmp_path / "mailreactor.yaml"
+        master_password = "masterPassword"  # pragma: allowlist secret
+
+        # Save and load
+        save_config(config_path, sample_account_config, master_password)
+        yaml_data = load_config(config_path)
+        loaded = AccountConfig.from_yaml(yaml_data, master_password)
+
+        # Verify all fields preserved
+        assert loaded.email == sample_account_config.email
+        assert loaded.imap.host == sample_account_config.imap.host
+        assert loaded.imap.port == sample_account_config.imap.port
+        assert loaded.imap.ssl == sample_account_config.imap.ssl
+        assert loaded.imap.username == sample_account_config.imap.username
+        assert loaded.imap.password == sample_account_config.imap.password
+        assert loaded.smtp.host == sample_account_config.smtp.host
+        assert loaded.smtp.port == sample_account_config.smtp.port
+        assert loaded.smtp.starttls == sample_account_config.smtp.starttls
+        assert loaded.smtp.username == sample_account_config.smtp.username
+        assert loaded.smtp.password == sample_account_config.smtp.password

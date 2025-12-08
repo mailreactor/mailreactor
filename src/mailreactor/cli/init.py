@@ -5,7 +5,7 @@ The wizard guides users through:
 - Email address and password input
 - Auto-detection of IMAP/SMTP settings (local → Mozilla → ISP → manual)
 - Connection validation with real-time feedback
-- YAML configuration file creation with placeholder passwords (Story 2.4 MVP)
+- YAML configuration file creation with encrypted passwords (Story 2.5.1)
 
 Usage:
     mailreactor init
@@ -15,12 +15,13 @@ Usage:
 
 Story 2.4 creates plaintext config (placeholder passwords).
 Story 2.4 course correction adds flags and unified wizard flow.
-Story 2.5 will add master password encryption.
+Story 2.5 adds encryption modules (core/encryption.py, core/config.py).
+Story 2.5.1 integrates encryption into init wizard (master password prompt).
 """
 
 import asyncio
-import getpass
 import logging
+import os
 import socket
 import ssl as ssl_module
 from pathlib import Path
@@ -29,14 +30,14 @@ from typing import Any, Coroutine, Optional, Tuple, TypeVar
 import aiosmtplib
 import structlog
 import typer
-import yaml
 from imapclient import IMAPClient
 from imapclient.exceptions import IMAPClientError
 from pydantic import EmailStr, TypeAdapter, ValidationError
 from rich.console import Console
 
+from mailreactor.core.config import save_config
 from mailreactor.core.provider_detector import detect_provider, get_provider_hint
-from mailreactor.models.account import IMAPConfig, ProviderConfig, SMTPConfig
+from mailreactor.models.account import AccountConfig, IMAPConfig, ProviderConfig, SMTPConfig
 
 console = Console()
 logger = structlog.get_logger()
@@ -63,7 +64,7 @@ def init_wizard(
         no_validation: Skip IMAP/SMTP connection validation (offline mode)
         verbose: Show structlog DEBUG logs (default: ERROR level only)
 
-    Flow (Story 2.4 course correction):
+    Flow (Story 2.4 course correction + Story 2.5.1 encryption):
     1. Check for existing config file (exit if found)
     2. Configure structlog based on verbose flag
     3. Prompt for email address (validate with Pydantic EmailStr)
@@ -72,14 +73,10 @@ def init_wizard(
     6. Show prompts with detected values as defaults (unified flow)
     7. Show IMAP config summary and validate if not --no-validation
     8. Show SMTP config summary and validate if not --no-validation
-    9. Create mailreactor.yaml with placeholder passwords
-    10. Set file permissions to 0600
-    11. Display success message with next steps
-
-    Story 2.5 will add:
-    - Master password prompts
-    - Password encryption (PBKDF2 + Fernet)
-    - !encrypted YAML tag
+    9. Prompt for master password (check MAILREACTOR_PASSWORD env var)
+    10. Encrypt passwords and save mailreactor.yaml (uses save_config)
+    11. Set file permissions to 0600 (handled by save_config)
+    12. Display success message with next steps
     """
     # Configure structlog for wizard (AC-7)
     # In normal mode: CRITICAL level (suppresses DEBUG/INFO/WARNING/ERROR)
@@ -124,12 +121,12 @@ def init_wizard(
     hint = get_provider_hint(domain)
     if hint:
         typer.echo()
-        typer.echo(f"💡 {hint}")
+        typer.echo(hint)
         typer.echo()
 
     # Prompt for password (hidden input)
     try:
-        password = getpass.getpass("Password: ")
+        password = typer.prompt("Password", hide_input=True, default="", show_default=False)
         # Accept any password (including blank) per AC
     except (KeyboardInterrupt, EOFError):
         # Ctrl+C handling
@@ -219,42 +216,71 @@ def init_wizard(
         typer.echo("\nConfiguration cancelled")
         raise typer.Exit(1)
 
-    # Create mailreactor.yaml with placeholder passwords (Story 2.4 MVP)
-    yaml_data = {
-        "email": email,
-        "imap": {
-            "host": imap_config.host,
-            "port": imap_config.port,
-            "ssl": imap_config.ssl,
-            "username": imap_config.username,
-            "password": "PLACEHOLDER_PASSWORD",  # pragma: allowlist secret  # Story 2.5 will add encryption
-        },
-        "smtp": {
-            "host": smtp_config.host,
-            "port": smtp_config.port,
-            "starttls": smtp_config.starttls,
-            "username": smtp_config.username,
-            "password": "PLACEHOLDER_PASSWORD",  # pragma: allowlist secret  # Story 2.5 will add encryption
-        },
-    }
+    # Master password prompt for encryption (Story 2.5.1)
+    typer.echo("Choose a master password to encrypt your credentials.")
+
+    # Check for MAILREACTOR_PASSWORD env var (AC-2)
+    env_password = os.getenv("MAILREACTOR_PASSWORD")
 
     try:
-        # Write YAML to file
-        with config_path.open("w") as f:
-            yaml.dump(yaml_data, f, default_flow_style=False, sort_keys=False)
+        if env_password:
+            # Show env var as default (AC-2)
+            # Note: Using typer.prompt here to allow empty input (press Enter for env var)
+            user_input = typer.prompt(
+                "Master password [MAILREACTOR_PASSWORD]",
+                hide_input=True,
+                default="",
+                show_default=False,
+            )
+            if user_input:
+                # User typed override - ask for confirmation (AC-3)
+                master_password = user_input
+                master_password_confirm = typer.prompt("Confirm master password", hide_input=True)
+                if master_password != master_password_confirm:
+                    console.print("Passwords do not match")
+                    raise typer.Exit(1)
+            else:
+                # User pressed Enter - use env var (AC-2)
+                master_password = env_password
+        else:
+            # No env var - regular prompt with confirmation (AC-1)
+            # Using typer.prompt with hide_input=True (auto-retries on empty)
+            master_password = typer.prompt("Master password", hide_input=True)
+            master_password_confirm = typer.prompt("Confirm master password", hide_input=True)
+            if master_password != master_password_confirm:
+                console.print("Passwords do not match")
+                raise typer.Exit(1)
+    except (KeyboardInterrupt, EOFError):
+        typer.echo("\nConfiguration cancelled")
+        raise typer.Exit(1)
 
-        # Set file permissions to 0600 (user read/write only)
-        try:
-            config_path.chmod(0o600)
-        except (OSError, NotImplementedError) as e:
-            # Windows may not support POSIX permissions
-            logger.warning("file_permissions_not_set", reason="platform_unsupported", error=str(e))
+    # Create AccountConfig with actual credentials (AC-5)
+    account_config = AccountConfig(
+        email=email,
+        imap=imap_config,  # Contains actual password
+        smtp=smtp_config,  # Contains actual password
+    )
 
-        # Success message (always the same, no validation note per HC correction)
+    try:
+        # Save config with encryption (AC-5)
+        # This encrypts passwords and writes YAML with !encrypted tags
+        # File permissions 0600 set automatically by save_config()
+        save_config(config_path, account_config, master_password)
+
+        # Success message (AC-1, AC-2)
+        typer.echo()
         console.print("Configuration saved to mailreactor.yaml")
         typer.echo()
         typer.echo("To start the server:")
         typer.echo("  mailreactor start")
+
+        # Show password reminder only if NOT using env var
+        if not (env_password and not user_input):
+            typer.echo()
+            typer.echo("The password will be required at startup.")
+            typer.echo(
+                "Enter it interactively or set the MAILREACTOR_PASSWORD environment variable."
+            )
 
     except Exception as e:
         typer.echo(f"\n❌ Failed to save configuration: {e}", err=True)
@@ -292,7 +318,9 @@ def _prompt_imap_config_unified(
 
     # Password prompt with REDACTED hint (AC-6 - HC correction)
     # User cannot see password, but Enter uses default_password value
-    imap_password_input = getpass.getpass("IMAP password [REDACTED]: ")
+    imap_password_input = typer.prompt(
+        "IMAP password [REDACTED]", hide_input=True, default="", show_default=False
+    )
     imap_password = imap_password_input if imap_password_input else default_password
 
     return IMAPConfig(
@@ -337,72 +365,10 @@ def _prompt_smtp_config_unified(
 
     # Password prompt with REDACTED hint (AC-6 - HC correction)
     # Default is IMAP password (password cascade: initial → IMAP → SMTP)
-    smtp_password_input = getpass.getpass("SMTP password [REDACTED]: ")
+    smtp_password_input = typer.prompt(
+        "SMTP password [REDACTED]", hide_input=True, default="", show_default=False
+    )
     smtp_password = smtp_password_input if smtp_password_input else default_password
-
-    return SMTPConfig(
-        host=smtp_host,
-        port=smtp_port,
-        starttls=smtp_starttls,
-        username=smtp_username,
-        password=smtp_password,
-    )
-
-
-def _prompt_imap_config(email: str, default_password: str) -> IMAPConfig:
-    """[DEPRECATED] Prompt for IMAP configuration when auto-detection fails.
-
-    This function is preserved for backward compatibility but is no longer used.
-    Use _prompt_imap_config_unified() instead (Story 2.4 course correction).
-
-    Args:
-        email: Email address (used as default username)
-        default_password: Password from initial prompt (used as default)
-
-    Returns:
-        IMAPConfig with user-provided settings
-    """
-    imap_host = typer.prompt("IMAP server")
-    imap_port = typer.prompt("IMAP port", default=993, type=int)
-
-    # Y/n prompt for SSL (default Y)
-    imap_ssl_input = typer.prompt("IMAP SSL [Y/n]", default="Y", show_default=False)
-    imap_ssl = imap_ssl_input.lower() in ["y", "yes", ""]
-
-    imap_username = typer.prompt("IMAP username", default=email)
-    imap_password = getpass.getpass("IMAP password: ")
-
-    return IMAPConfig(
-        host=imap_host,
-        port=imap_port,
-        ssl=imap_ssl,
-        username=imap_username,
-        password=imap_password,
-    )
-
-
-def _prompt_smtp_config(email: str, default_password: str) -> SMTPConfig:
-    """[DEPRECATED] Prompt for SMTP configuration after IMAP validation.
-
-    This function is preserved for backward compatibility but is no longer used.
-    Use _prompt_smtp_config_unified() instead (Story 2.4 course correction).
-
-    Args:
-        email: Email address (used as default username)
-        default_password: Password from initial prompt (used as default)
-
-    Returns:
-        SMTPConfig with user-provided settings
-    """
-    smtp_host = typer.prompt("SMTP server")
-    smtp_port = typer.prompt("SMTP port", default=587, type=int)
-
-    # Y/n prompt for STARTTLS (default Y)
-    smtp_starttls_input = typer.prompt("SMTP STARTTLS [Y/n]", default="Y", show_default=False)
-    smtp_starttls = smtp_starttls_input.lower() in ["y", "yes", ""]
-
-    smtp_username = typer.prompt("SMTP username", default=email)
-    smtp_password = getpass.getpass("SMTP password: ")
 
     return SMTPConfig(
         host=smtp_host,

@@ -11,6 +11,8 @@ Password fields are marked with Field(exclude=True) to prevent exposure.
 """
 
 from datetime import datetime, timezone
+from typing import Any
+
 from pydantic import BaseModel, EmailStr, Field
 
 
@@ -84,6 +86,79 @@ class SMTPConfig(BaseModel):
     starttls: bool = Field(True, description="Use STARTTLS for SMTP connection")
     username: str = Field(..., description="SMTP username (usually email)", min_length=1)
     password: str = Field(..., description="SMTP password", exclude=True)
+
+
+class AccountConfig(BaseModel):
+    """Account configuration for project-local mailreactor.yaml.
+
+    Simpler than MailAccount - contains only essential IMAP/SMTP config
+    without runtime state (no account_id, created_at, connection_status).
+    Used for loading/saving encrypted YAML configuration files.
+
+    Attributes:
+        email: Primary email address (validated as EmailStr)
+        imap: IMAP configuration with credentials
+        smtp: SMTP configuration with credentials
+    """
+
+    email: EmailStr = Field(..., description="Primary email address")
+    imap: IMAPConfig = Field(..., description="IMAP server configuration and credentials")
+    smtp: SMTPConfig = Field(..., description="SMTP server configuration and credentials")
+
+    @classmethod
+    def from_yaml(cls, yaml_data: dict[str, Any], master_password: str) -> "AccountConfig":
+        """Load AccountConfig from YAML data with password decryption.
+
+        Decrypts IMAP and SMTP passwords from !encrypted YAML values using
+        the provided master password. This is the primary way to load config
+        after mailreactor.yaml has been parsed.
+
+        Args:
+            yaml_data: Parsed YAML dict from load_config()
+            master_password: User's master password for decryption
+
+        Returns:
+            AccountConfig with decrypted passwords in memory
+
+        Raises:
+            cryptography.fernet.InvalidToken: Wrong master password or corrupted data
+
+        Example:
+            >>> from mailreactor.core.config import load_config  # doctest: +SKIP
+            >>> yaml_data = load_config(Path("mailreactor.yaml"))  # doctest: +SKIP
+            >>> config = AccountConfig.from_yaml(yaml_data, "masterPassword")  # doctest: +SKIP
+            >>> config.imap.password  # Decrypted in memory  # doctest: +SKIP
+            'originalPassword'
+        """
+        # Import here to avoid circular dependency
+        from mailreactor.core.config import EncryptedValue
+        from mailreactor.core.encryption import decrypt
+
+        # Decrypt IMAP password
+        imap_encrypted = yaml_data["imap"]["password"]
+        if isinstance(imap_encrypted, EncryptedValue):
+            imap_password = decrypt(
+                imap_encrypted.salt + imap_encrypted.ciphertext, master_password
+            )
+        else:
+            # Plaintext fallback for testing
+            imap_password = imap_encrypted
+
+        # Decrypt SMTP password
+        smtp_encrypted = yaml_data["smtp"]["password"]
+        if isinstance(smtp_encrypted, EncryptedValue):
+            smtp_password = decrypt(
+                smtp_encrypted.salt + smtp_encrypted.ciphertext, master_password
+            )
+        else:
+            # Plaintext fallback for testing
+            smtp_password = smtp_encrypted
+
+        return cls(
+            email=yaml_data["email"],
+            imap=IMAPConfig(**{**yaml_data["imap"], "password": imap_password}),
+            smtp=SMTPConfig(**{**yaml_data["smtp"], "password": smtp_password}),
+        )
 
 
 class MailAccount(BaseModel):
