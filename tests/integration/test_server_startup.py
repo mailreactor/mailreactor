@@ -17,20 +17,26 @@ import pytest
 
 
 @pytest.fixture
-def server_process() -> subprocess.Popen:  # type: ignore[type-arg]
+def server_process(test_config_file) -> subprocess.Popen:  # type: ignore[type-arg]
     """Fixture to start server process and clean up after test."""
     process = None
+    import os
 
     def _start_server(args: list[str]) -> subprocess.Popen:  # type: ignore[type-arg]
         """Start server with given CLI arguments."""
         nonlocal process
         # Use python -m mailreactor to test __main__ entry point
-        cmd = [sys.executable, "-m", "mailreactor"] + args
+        # Add --config flag to use test config (Story 2.6)
+        cmd = [sys.executable, "-m", "mailreactor"] + args + ["--config", test_config_file]
         process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            env={
+                **os.environ,
+                "MAILREACTOR_PASSWORD": "test-master-password",  # pragma: allowlist secret
+            },
         )
         # Wait a bit for server to start
         time.sleep(0.5)

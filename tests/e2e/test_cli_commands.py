@@ -5,6 +5,7 @@ Tests both entry point methods:
 - Module invocation: python -m mailreactor start
 """
 
+import os
 import subprocess
 import sys
 import time
@@ -13,17 +14,33 @@ import httpx
 import pytest
 
 
+# Note: test_config_file fixture now provided by conftest.py (Story 2.6)
+
+
 class TestCLIEntryPoints:
     """Test both CLI entry point methods work correctly."""
 
-    def test_module_invocation_starts_server(self) -> None:
+    def test_module_invocation_starts_server(self, test_config_file) -> None:
         """Test python -m mailreactor start works."""
-        # Start server via module invocation
+        # Start server via module invocation with config
         process = subprocess.Popen(
-            [sys.executable, "-m", "mailreactor", "start", "--port", "8002"],
+            [
+                sys.executable,
+                "-m",
+                "mailreactor",
+                "start",
+                "--port",
+                "8002",
+                "--config",
+                test_config_file,
+            ],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            env={
+                **os.environ,
+                "MAILREACTOR_PASSWORD": "test-master-password",  # pragma: allowlist secret
+            },
         )
 
         try:
@@ -53,7 +70,7 @@ class TestCLIEntryPoints:
     @pytest.mark.skipif(
         sys.platform == "win32", reason="Console script entry point not tested on Windows in CI"
     )
-    def test_console_script_invocation_starts_server(self) -> None:
+    def test_console_script_invocation_starts_server(self, test_config_file) -> None:
         """Test mailreactor start console script works (after pip install)."""
         # This test requires the package to be installed (pip install -e .)
         # Skip if not in editable install mode
@@ -69,12 +86,16 @@ class TestCLIEntryPoints:
         except (FileNotFoundError, subprocess.TimeoutExpired):
             pytest.skip("mailreactor command not available (not installed)")
 
-        # Start server via console script
+        # Start server via console script with config
         process = subprocess.Popen(
-            ["mailreactor", "start", "--port", "8003"],
+            ["mailreactor", "start", "--port", "8003", "--config", test_config_file],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            env={
+                **os.environ,
+                "MAILREACTOR_PASSWORD": "test-master-password",  # pragma: allowlist secret
+            },
         )
 
         try:

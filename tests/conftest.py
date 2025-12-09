@@ -477,6 +477,62 @@ def greenmail_smtp_client(greenmail_test_account):
 # ============================================================================
 
 
+# ============================================================================
+# Story 2.6: Config File Fixtures for E2E and Integration Tests
+# ============================================================================
+
+
+@pytest.fixture(scope="session")
+def test_config_file(tmp_path_factory):
+    """Create a test mailreactor.yaml for E2E/integration tests (Story 2.6).
+
+    Tests that actually start the server need a valid config file with encrypted credentials.
+    This creates a minimal config that will work for testing.
+    """
+    from mailreactor.core.encryption import encrypt
+
+    # Create temp config directory
+    config_dir = tmp_path_factory.mktemp("test_config")
+    config_file = config_dir / "mailreactor.yaml"
+
+    # Create minimal config with encrypted dummy credentials
+    master_password = "test-master-password"  # pragma: allowlist secret
+    dummy_password = "dummy-password"  # pragma: allowlist secret
+    encrypted_password = encrypt(dummy_password, master_password)
+
+    config_content = f"""email: test@example.com
+
+imap:
+  host: imap.example.com
+  port: 993
+  ssl: true
+  username: test@example.com
+  password: !encrypted {encrypted_password}
+
+smtp:
+  host: smtp.example.com
+  port: 587
+  starttls: true
+  username: test@example.com
+  password: !encrypted {encrypted_password}
+"""
+
+    config_file.write_text(config_content)
+    config_file.chmod(0o600)
+
+    # Set environment variable for master password
+    original_password = os.environ.get("MAILREACTOR_PASSWORD")
+    os.environ["MAILREACTOR_PASSWORD"] = master_password
+
+    yield str(config_file)
+
+    # Cleanup
+    if original_password is not None:
+        os.environ["MAILREACTOR_PASSWORD"] = original_password
+    elif "MAILREACTOR_PASSWORD" in os.environ:
+        del os.environ["MAILREACTOR_PASSWORD"]
+
+
 def pytest_configure(config):
     """Register custom pytest markers."""
     config.addinivalue_line(

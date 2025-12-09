@@ -4,9 +4,12 @@ Tests CLI argument parsing, configuration override, and logging setup
 without actually starting the server (using mocks).
 """
 
+from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
+import typer
+from cryptography.fernet import InvalidToken
 from typer.testing import CliRunner
 
 # Import app and ensure cli module is loaded before mocking
@@ -35,8 +38,46 @@ def ensure_cli_module_loaded():
     yield
 
 
+@pytest.fixture
+def mock_account_config_loading(monkeypatch):
+    """Mock load_account_config for tests that don't explicitly test config loading (Story 2.6).
+
+    This fixture ensures legacy tests continue to work after Story 2.6 added
+    config loading to _run_server().
+    """
+    from unittest.mock import Mock
+    from mailreactor.models.account import AccountConfig, IMAPConfig, SMTPConfig
+
+    mock_account_config = AccountConfig(
+        email="test@example.com",
+        imap=IMAPConfig(
+            host="imap.example.com",
+            port=993,
+            ssl=True,
+            username="test@example.com",
+            password="test-password",  # pragma: allowlist secret
+        ),
+        smtp=SMTPConfig(
+            host="smtp.example.com",
+            port=587,
+            starttls=True,
+            username="test@example.com",
+            password="test-password",  # pragma: allowlist secret
+        ),
+    )
+
+    mock_func = Mock(return_value=mock_account_config)
+    monkeypatch.setattr("mailreactor.cli.server.load_account_config", mock_func)
+    yield mock_func
+
+
 class TestCLIArgumentParsing:
     """Test CLI argument parsing and validation."""
+
+    @pytest.fixture(autouse=True)
+    def _mock_config(self, mock_account_config_loading):
+        """Use config loading mock for all tests in this class."""
+        pass
 
     @patch("mailreactor.cli.server.uvicorn.run")
     @patch("mailreactor.cli.server.configure_logging")
@@ -124,26 +165,8 @@ class TestCLIArgumentParsing:
         # Verify case is normalized to uppercase
         mock_configure_logging.assert_called_once_with(json_format=False, log_level="WARNING")
 
-    @patch("mailreactor.cli.server.logger")
-    @patch("mailreactor.cli.server.uvicorn.run")
-    @patch("mailreactor.cli.server.configure_logging")
-    def test_start_command_with_account_flag_shows_warning(
-        self,
-        mock_configure_logging: Mock,
-        mock_uvicorn_run: Mock,
-        mock_logger: Mock,
-        cli_runner: CliRunner,
-    ) -> None:
-        """Test start command with --account flag (not implemented yet)."""
-        result = cli_runner.invoke(app, ["start", "--account", "test@example.com"])
-
-        assert result.exit_code == 0
-        # Verify warning was logged about unimplemented feature
-        mock_logger.warning.assert_any_call(
-            "feature_not_implemented",
-            message="--account flag is not implemented yet (Epic 2). "
-            "Account 'test@example.com' will be ignored.",
-        )
+    # Removed: test_start_command_with_account_flag_shows_warning
+    # --account flag removed in Story 2.6, replaced with --config flag
 
     def test_start_command_invalid_port_rejected(self, cli_runner: CliRunner) -> None:
         """Test start command rejects invalid port number."""
@@ -156,6 +179,11 @@ class TestCLIArgumentParsing:
 
 class TestCLILoggingConfiguration:
     """Test logging configuration from CLI flags."""
+
+    @pytest.fixture(autouse=True)
+    def _mock_config(self, mock_account_config_loading):
+        """Use config loading mock for all tests in this class."""
+        pass
 
     @patch("mailreactor.cli.server.uvicorn.run")
     @patch("mailreactor.cli.server.configure_logging")
@@ -197,6 +225,11 @@ class TestCLILoggingConfiguration:
 class TestCLISettingsOverride:
     """Test Settings override with CLI flags."""
 
+    @pytest.fixture(autouse=True)
+    def _mock_config(self, mock_account_config_loading):
+        """Use config loading mock for all tests in this class."""
+        pass
+
     @patch("mailreactor.cli.server.uvicorn.run")
     @patch("mailreactor.cli.server.configure_logging")
     @patch("mailreactor.cli.server.Settings")
@@ -231,6 +264,8 @@ class TestCLISettingsOverride:
 class TestCLIHelpText:
     """Test CLI help text and documentation."""
 
+    # No mock needed - help text doesn't execute the command
+
     def test_start_command_help_displayed(self, cli_runner: CliRunner) -> None:
         """Test start command --help displays usage information."""
         result = cli_runner.invoke(app, ["start", "--help"])
@@ -242,7 +277,7 @@ class TestCLIHelpText:
         assert "--port" in result.output
         assert "--log-level" in result.output
         assert "--json-logs" in result.output
-        assert "--account" in result.output
+        assert "--config" in result.output
 
     def test_start_command_help_includes_examples(self, cli_runner: CliRunner) -> None:
         """Test start command --help includes usage examples."""
@@ -262,6 +297,11 @@ class TestCLIHelpText:
 
 class TestCLISecurityDefaults:
     """Test security-related defaults (localhost binding)."""
+
+    @pytest.fixture(autouse=True)
+    def _mock_config(self, mock_account_config_loading):
+        """Use config loading mock for all tests in this class."""
+        pass
 
     @patch("mailreactor.cli.server.uvicorn.run")
     @patch("mailreactor.cli.server.configure_logging")
@@ -302,6 +342,11 @@ class TestCLISecurityDefaults:
 
 class TestDevCommand:
     """Test dev command with auto-reload (Story 1.8)."""
+
+    @pytest.fixture(autouse=True)
+    def _mock_config(self, mock_account_config_loading):
+        """Use config loading mock for all tests in this class."""
+        pass
 
     @patch("mailreactor.cli.server.uvicorn.run")
     @patch("mailreactor.cli.server.configure_logging")
@@ -424,3 +469,363 @@ class TestDevCommand:
 
         assert result.exit_code == 0
         assert "dev" in result.output
+
+
+class TestLoadAccountConfig:
+    """Test load_account_config function (Story 2.6)."""
+
+    @patch("mailreactor.cli.server.AccountConfig.from_yaml")
+    @patch("mailreactor.cli.server.load_config")
+    @patch("mailreactor.cli.server.getpass.getpass")
+    @patch("mailreactor.cli.server.logger")
+    def test_load_account_config_success_with_prompt(
+        self,
+        mock_logger: Mock,
+        mock_getpass: Mock,
+        mock_load_config: Mock,
+        mock_from_yaml: Mock,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Test load_account_config with correct password from prompt."""
+        from mailreactor.cli.server import load_account_config
+        from mailreactor.models.account import AccountConfig, IMAPConfig, SMTPConfig
+
+        # Clear env var so getpass is used instead
+        monkeypatch.delenv("MAILREACTOR_PASSWORD", raising=False)
+
+        # Setup mocks
+        config_file = tmp_path / "mailreactor.yaml"
+        config_file.touch()
+        mock_load_config.return_value = {"email": "test@example.com"}
+        mock_getpass.return_value = "correct-password"  # pragma: allowlist secret
+        mock_account_config = AccountConfig(
+            email="test@example.com",
+            imap=IMAPConfig(
+                host="imap.example.com",
+                port=993,
+                ssl=True,
+                username="test@example.com",
+                password="decrypted-password",  # pragma: allowlist secret
+            ),
+            smtp=SMTPConfig(
+                host="smtp.example.com",
+                port=587,
+                starttls=True,
+                username="test@example.com",
+                password="decrypted-password",  # pragma: allowlist secret
+            ),
+        )
+        mock_from_yaml.return_value = mock_account_config
+
+        # Execute
+        result = load_account_config(config_file)
+
+        # Verify
+        assert result == mock_account_config
+        mock_load_config.assert_called_once_with(config_file)
+        mock_from_yaml.assert_called_once_with({"email": "test@example.com"}, "correct-password")
+        mock_logger.info.assert_any_call("config_loaded", path=str(config_file))
+        mock_logger.info.assert_any_call(
+            "account_configured",
+            email="test@example.com",
+            imap_host="imap.example.com",
+            smtp_host="smtp.example.com",
+        )
+
+    @patch("mailreactor.cli.server.AccountConfig.from_yaml")
+    @patch("mailreactor.cli.server.load_config")
+    @patch("mailreactor.cli.server.logger")
+    def test_load_account_config_success_with_env_var(
+        self,
+        mock_logger: Mock,
+        mock_load_config: Mock,
+        mock_from_yaml: Mock,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Test load_account_config with master password from environment variable."""
+        from mailreactor.cli.server import load_account_config
+        from mailreactor.models.account import AccountConfig, IMAPConfig, SMTPConfig
+
+        # Setup mocks and environment
+        config_file = tmp_path / "mailreactor.yaml"
+        config_file.touch()
+        monkeypatch.setenv("MAILREACTOR_PASSWORD", "env-password")  # pragma: allowlist secret
+        mock_load_config.return_value = {"email": "test@example.com"}
+        mock_account_config = AccountConfig(
+            email="test@example.com",
+            imap=IMAPConfig(
+                host="imap.example.com",
+                port=993,
+                ssl=True,
+                username="test@example.com",
+                password="decrypted-password",  # pragma: allowlist secret
+            ),
+            smtp=SMTPConfig(
+                host="smtp.example.com",
+                port=587,
+                starttls=True,
+                username="test@example.com",
+                password="decrypted-password",  # pragma: allowlist secret
+            ),
+        )
+        mock_from_yaml.return_value = mock_account_config
+
+        # Execute
+        result = load_account_config(config_file)
+
+        # Verify
+        assert result == mock_account_config
+        mock_from_yaml.assert_called_once_with({"email": "test@example.com"}, "env-password")
+        # Verify new log event (INFO level, not DEBUG)
+        mock_logger.info.assert_any_call("master_password", from_env="MAILREACTOR_PASSWORD")
+
+    @patch("mailreactor.cli.server.logger")
+    def test_load_account_config_missing_file(
+        self,
+        mock_logger: Mock,
+        tmp_path: Path,
+    ) -> None:
+        """Test load_account_config with missing config file."""
+        from mailreactor.cli.server import load_account_config
+
+        # Setup - no file exists
+        config_file = tmp_path / "nonexistent.yaml"
+
+        # Execute and verify
+        with pytest.raises(typer.Exit) as exc_info:
+            load_account_config(config_file)
+
+        assert exc_info.value.exit_code == 1
+        mock_logger.error.assert_called_once_with(
+            "config_not_found",
+            path=str(config_file),
+            help="run 'mailreactor init' or 'mailreactor start --config path/to/yaml'",
+        )
+
+    @patch("mailreactor.cli.server.AccountConfig.from_yaml")
+    @patch("mailreactor.cli.server.load_config")
+    @patch("mailreactor.cli.server.getpass.getpass")
+    @patch("mailreactor.cli.server.logger")
+    def test_load_account_config_wrong_password(
+        self,
+        mock_logger: Mock,
+        mock_getpass: Mock,
+        mock_load_config: Mock,
+        mock_from_yaml: Mock,
+        tmp_path: Path,
+    ) -> None:
+        """Test load_account_config with wrong master password."""
+        from mailreactor.cli.server import load_account_config
+
+        # Setup mocks
+        config_file = tmp_path / "mailreactor.yaml"
+        config_file.touch()
+        mock_load_config.return_value = {"email": "test@example.com"}
+        mock_getpass.return_value = "wrong-password"
+        mock_from_yaml.side_effect = InvalidToken()
+
+        # Execute and verify
+        with pytest.raises(typer.Exit) as exc_info:
+            load_account_config(config_file)
+
+        assert exc_info.value.exit_code == 1
+        mock_logger.error.assert_called_with("decryption_failed", reason="invalid_master_password")
+
+    @patch("mailreactor.cli.server.load_config")
+    @patch("mailreactor.cli.server.getpass.getpass")
+    @patch("mailreactor.cli.server.logger")
+    def test_load_account_config_corrupted_yaml(
+        self,
+        mock_logger: Mock,
+        mock_getpass: Mock,
+        mock_load_config: Mock,
+        tmp_path: Path,
+    ) -> None:
+        """Test load_account_config with corrupted YAML file."""
+        from mailreactor.cli.server import load_account_config
+
+        # Setup mocks
+        config_file = tmp_path / "mailreactor.yaml"
+        config_file.touch()
+        mock_getpass.return_value = "test-password"
+        mock_load_config.side_effect = Exception("YAML parse error")
+
+        # Execute and verify
+        with pytest.raises(typer.Exit) as exc_info:
+            load_account_config(config_file)
+
+        assert exc_info.value.exit_code == 1
+        mock_logger.error.assert_called_with(
+            "config_parse_error", error="YAML parse error", error_type="Exception"
+        )
+
+
+class TestStartCommandWithConfig:
+    """Test start command with --config flag (Story 2.6)."""
+
+    @patch("mailreactor.cli.server.uvicorn.run")
+    @patch("mailreactor.cli.server.load_account_config")
+    @patch("mailreactor.cli.server.configure_logging")
+    def test_start_command_with_config_flag(
+        self,
+        mock_configure_logging: Mock,
+        mock_load_account_config: Mock,
+        mock_uvicorn_run: Mock,
+        cli_runner: CliRunner,
+        tmp_path: Path,
+    ) -> None:
+        """Test start command with --config flag."""
+        from mailreactor.models.account import AccountConfig, IMAPConfig, SMTPConfig
+
+        # Setup mocks
+        config_file = tmp_path / "custom.yaml"
+        mock_account_config = AccountConfig(
+            email="test@example.com",
+            imap=IMAPConfig(
+                host="imap.example.com",
+                port=993,
+                ssl=True,
+                username="test@example.com",
+                password="decrypted-password",  # pragma: allowlist secret
+            ),
+            smtp=SMTPConfig(
+                host="smtp.example.com",
+                port=587,
+                starttls=True,
+                username="test@example.com",
+                password="decrypted-password",  # pragma: allowlist secret
+            ),
+        )
+        mock_load_account_config.return_value = mock_account_config
+
+        # Execute
+        result = cli_runner.invoke(app, ["start", "--config", str(config_file)])
+
+        # Verify
+        assert result.exit_code == 0
+        mock_load_account_config.assert_called_once()
+        call_args = mock_load_account_config.call_args[0][0]
+        assert str(call_args) == str(config_file)
+
+    @patch("mailreactor.cli.server.uvicorn.run")
+    @patch("mailreactor.cli.server.load_account_config")
+    @patch("mailreactor.cli.server.configure_logging")
+    def test_start_command_without_config_flag_uses_default(
+        self,
+        mock_configure_logging: Mock,
+        mock_load_account_config: Mock,
+        mock_uvicorn_run: Mock,
+        cli_runner: CliRunner,
+    ) -> None:
+        """Test start command without --config flag uses mailreactor.yaml."""
+        from mailreactor.models.account import AccountConfig, IMAPConfig, SMTPConfig
+
+        # Setup mocks
+        mock_account_config = AccountConfig(
+            email="test@example.com",
+            imap=IMAPConfig(
+                host="imap.example.com",
+                port=993,
+                ssl=True,
+                username="test@example.com",
+                password="decrypted-password",  # pragma: allowlist secret
+            ),
+            smtp=SMTPConfig(
+                host="smtp.example.com",
+                port=587,
+                starttls=True,
+                username="test@example.com",
+                password="decrypted-password",  # pragma: allowlist secret
+            ),
+        )
+        mock_load_account_config.return_value = mock_account_config
+
+        # Execute
+        result = cli_runner.invoke(app, ["start"])
+
+        # Verify
+        assert result.exit_code == 0
+        mock_load_account_config.assert_called_once()
+        call_args = mock_load_account_config.call_args[0][0]
+        assert call_args == Path("mailreactor.yaml")
+
+    def test_start_command_help_shows_config_flag(self, cli_runner: CliRunner) -> None:
+        """Test start command --help shows --config flag."""
+        result = cli_runner.invoke(app, ["start", "--help"])
+
+        assert result.exit_code == 0
+        assert "--config" in result.output
+        assert "mailreactor.yaml" in result.output.lower()
+
+    def test_start_command_help_no_account_flag(self, cli_runner: CliRunner) -> None:
+        """Test start command --help does NOT show --account flag."""
+        result = cli_runner.invoke(app, ["start", "--help"])
+
+        assert result.exit_code == 0
+        # --account flag should be removed
+        assert "--account" not in result.output
+
+
+class TestDevCommandWithConfig:
+    """Test dev command with --config flag (Story 2.6)."""
+
+    @patch("mailreactor.cli.server.uvicorn.run")
+    @patch("mailreactor.cli.server.load_account_config")
+    @patch("mailreactor.cli.server.configure_logging")
+    def test_dev_command_with_config_flag(
+        self,
+        mock_configure_logging: Mock,
+        mock_load_account_config: Mock,
+        mock_uvicorn_run: Mock,
+        cli_runner: CliRunner,
+        tmp_path: Path,
+    ) -> None:
+        """Test dev command with --config flag."""
+        from mailreactor.models.account import AccountConfig, IMAPConfig, SMTPConfig
+
+        # Setup mocks
+        config_file = tmp_path / "custom.yaml"
+        mock_account_config = AccountConfig(
+            email="test@example.com",
+            imap=IMAPConfig(
+                host="imap.example.com",
+                port=993,
+                ssl=True,
+                username="test@example.com",
+                password="decrypted-password",  # pragma: allowlist secret
+            ),
+            smtp=SMTPConfig(
+                host="smtp.example.com",
+                port=587,
+                starttls=True,
+                username="test@example.com",
+                password="decrypted-password",  # pragma: allowlist secret
+            ),
+        )
+        mock_load_account_config.return_value = mock_account_config
+
+        # Execute
+        result = cli_runner.invoke(app, ["dev", "--config", str(config_file)])
+
+        # Verify
+        assert result.exit_code == 0
+        mock_load_account_config.assert_called_once()
+        call_args = mock_load_account_config.call_args[0][0]
+        assert str(call_args) == str(config_file)
+
+    def test_dev_command_help_shows_config_flag(self, cli_runner: CliRunner) -> None:
+        """Test dev command --help shows --config flag."""
+        result = cli_runner.invoke(app, ["dev", "--help"])
+
+        assert result.exit_code == 0
+        assert "--config" in result.output
+
+    def test_dev_command_help_no_account_flag(self, cli_runner: CliRunner) -> None:
+        """Test dev command --help does NOT show --account flag."""
+        result = cli_runner.invoke(app, ["dev", "--help"])
+
+        assert result.exit_code == 0
+        # --account flag should be removed
+        assert "--account" not in result.output
