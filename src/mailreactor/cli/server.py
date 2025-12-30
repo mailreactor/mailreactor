@@ -24,68 +24,12 @@ from cryptography.fernet import InvalidToken
 
 from mailreactor.config import Settings
 from mailreactor.core.config import load_config
+from mailreactor.core.plugin_loader import discover_plugins
 from mailreactor.models.account import AccountConfig
 from mailreactor.utils.logging import configure_logging
 from mailreactor.utils.version import get_app_version
 
 logger = structlog.get_logger()
-
-
-def load_account_config(config_path: Path) -> AccountConfig:
-    """Load and decrypt account config from YAML file.
-
-    Args:
-        config_path: Path to config file
-
-    Returns:
-        AccountConfig with decrypted credentials
-
-    Raises:
-        typer.Exit: If config missing or decryption fails (exit code 1)
-    """
-    # 1. Check file exists FIRST (before asking for password)
-    if not config_path.exists():
-        logger.error(
-            "config_not_found",
-            path=str(config_path),
-            help="run 'mailreactor init' or 'mailreactor start --config path/to/yaml'",
-        )
-        raise typer.Exit(1)
-
-    # 2. Get master password BEFORE any other logging (clean UX)
-    master_password = os.environ.get("MAILREACTOR_PASSWORD")
-    if master_password:
-        logger.info("master_password", from_env="MAILREACTOR_PASSWORD")
-    else:
-        master_password = getpass.getpass("Master password: ")
-
-    # 3. Load config (logs come AFTER password prompt)
-    try:
-        config_dict = load_config(config_path)
-        logger.info("config_loaded", path=str(config_path))
-    except Exception as e:
-        logger.error("config_parse_error", error=str(e), error_type=type(e).__name__)
-        raise typer.Exit(1)
-
-    # 4. Decrypt credentials
-    try:
-        account_config = AccountConfig.from_yaml(config_dict, master_password)
-    except InvalidToken:
-        logger.error("decryption_failed", reason="invalid_master_password")
-        raise typer.Exit(1)
-    except Exception as e:
-        logger.error("decryption_failed", error=str(e), error_type=type(e).__name__)
-        raise typer.Exit(1)
-
-    # 5. Log successful configuration
-    logger.info(
-        "account_configured",
-        email=account_config.email,
-        imap_host=account_config.imap.host,
-        smtp_host=account_config.smtp.host,
-    )
-
-    return account_config
 
 
 def _run_server(
@@ -106,19 +50,62 @@ def _run_server(
         dev_mode: Enable development mode with auto-reload (default: False)
         config_path: Path to mailreactor.yaml config file (default: ./mailreactor.yaml)
     """
-    # Configure logging FIRST (before any other initialization)
-    configure_logging(json_format=json_logs, log_level=log_level.upper())
-
-    # Load account configuration from file (Story 2.6)
+    # Check config file and get password FIRST (before logging output)
     if config_path is None:
         config_path = Path("mailreactor.yaml")
 
-    account_config = load_account_config(config_path)  # noqa: F841
+    if not config_path.exists():
+        import sys
+
+        print(f"Error: Config file not found: {config_path}", file=sys.stderr)
+        print("Run 'mailreactor init' to create a config file", file=sys.stderr)
+        raise typer.Exit(1)
+
+    # Get password before any logging
+    master_password = os.environ.get("MAILREACTOR_PASSWORD")
+    if not master_password:
+        master_password = getpass.getpass("Master password: ")
+
+    # NOW configure logging (after password prompt, so logs have proper formatting)
+    configure_logging(json_format=json_logs, log_level=log_level.upper())
+
+    # Load account configuration (will log with proper module names now)
+    try:
+        config_dict = load_config(config_path)
+        logger.info("config_loaded", path=str(config_path))
+    except Exception as e:
+        logger.error("config_parse_error", error=str(e), error_type=type(e).__name__)
+        raise typer.Exit(1)
+
+    try:
+        account_config = AccountConfig.from_yaml(config_dict, master_password)  # noqa: F841
+        logger.info(
+            "account_configured",
+            email=account_config.email,  # Auto-masked by structlog processor
+            imap_host=account_config.imap.host,
+            smtp_host=account_config.smtp.host,
+        )
+    except InvalidToken:
+        logger.error("decryption_failed", reason="invalid_master_password")
+        raise typer.Exit(1)
+    except Exception as e:
+        logger.error("decryption_failed", error=str(e), error_type=type(e).__name__)
+        raise typer.Exit(1)
+
+    # Discover plugins again (already discovered in __main__.py for CLI decoration)
+    # This time we LOG the discovery since logging is now configured
+    # Plugin start/stop lifecycle will be handled by FastAPI lifespan (Story 3-31)
+    plugins = discover_plugins(log=True)
+    logger.info("plugins_enabled", plugins=list(plugins.keys()), count=len(plugins))
 
     # TODO: Pass account_config to FastAPI app factory (requires main.py update)
     # NOTE: account_config is loaded and validated but not yet passed to main.py
     # This will be implemented in the next story when create_app() is updated
     # to accept AccountConfig parameter
+
+    # TODO: Plugin lifecycle (start/stop) will be handled via FastAPI lifespan events (Story 3-31)
+    # The plugins dict will be passed to create_app() which will call plugin.start() on startup
+    # and plugin.stop() on shutdown using contextlib.asynccontextmanager
 
     # Log development mode warning if in dev mode
     if dev_mode:

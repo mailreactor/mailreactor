@@ -4,6 +4,13 @@ This module provides a single internal pipeline with dual renderers:
 - Console renderer (default): Human-readable colored output via rich integration
 - JSON renderer (opt-in): Machine-readable structured logs for log aggregators
 
+PII Protection:
+    Sensitive data is automatically protected via structlog processor:
+    - Passwords, tokens, secrets: Fully redacted as [REDACTED]
+    - Email addresses: Masked to show only domain (***@example.com)
+
+    This happens automatically - no need to manually mask at log sites.
+
 Usage:
     # Configure at application startup
     configure_logging(json_format=False, log_level="INFO")
@@ -11,8 +18,9 @@ Usage:
     # Get a logger
     logger = structlog.get_logger()
 
-    # Log with context
-    logger.info("email_sent", recipient="user@example.com", message_id="abc123")
+    # Log with context (PII auto-masked)
+    logger.info("email_sent", recipient="user@example.com")  # → recipient=***@example.com
+    logger.info("auth", password="secret")  # → password=[REDACTED]  # pragma: allowlist secret
 
     # Bind context for request tracing
     bind_context(request_id="123e4567-e89b-12d3-a456-426614174000")
@@ -30,20 +38,57 @@ from structlog.types import EventDict, WrappedLogger
 
 # Sensitive field names to redact from logs
 SENSITIVE_FIELDS = {
-    "password",
+    "password",  # pragma: allowlist secret
     "api_key",
     "auth_token",
-    "secret",
+    "secret",  # pragma: allowlist secret
     "authorization",
     "apikey",
     "api-key",
+    "token",
+    "bearer",
 }
+
+# PII field names to mask (not fully redact)
+PII_FIELDS = {
+    "email",
+    "recipient",
+    "sender",
+}
+
+
+def _mask_email(email: str) -> str:
+    """Mask email address for PII-safe logging.
+
+    Args:
+        email: Email address to mask
+
+    Returns:
+        Masked email with username replaced by ***
+
+    Examples:
+        >>> _mask_email("user@example.com")
+        '***@example.com'
+        >>> _mask_email("invalid")
+        '***'
+    """
+    if not isinstance(email, str):
+        return str(email)
+
+    parts = email.split("@")
+    if len(parts) == 2:
+        return f"***@{parts[1]}"
+    return "***"
 
 
 def _filter_sensitive_data(
     logger: WrappedLogger, method_name: str, event_dict: EventDict
 ) -> EventDict:
-    """Redact sensitive fields from log output.
+    """Redact sensitive fields and mask PII from log output.
+
+    This processor automatically protects sensitive information:
+    - Sensitive fields (passwords, tokens): Fully redacted as [REDACTED]
+    - PII fields (emails): Masked to show only domain (***@domain.com)
 
     Args:
         logger: The wrapped logger instance
@@ -51,11 +96,25 @@ def _filter_sensitive_data(
         event_dict: The event dictionary to process
 
     Returns:
-        Event dictionary with sensitive fields redacted
+        Event dictionary with sensitive fields redacted and PII masked
+
+    Examples:
+        >>> # These transformations happen automatically:
+        >>> logger.info("event", password="secret123")  # pragma: allowlist secret
+        >>> # → password=[REDACTED]
+        >>> logger.info("event", email="user@example.com")  # → email=***@example.com
     """
     for key in list(event_dict.keys()):
-        if key.lower() in SENSITIVE_FIELDS:
+        key_lower = key.lower()
+
+        # Fully redact sensitive fields
+        if key_lower in SENSITIVE_FIELDS:
             event_dict[key] = "[REDACTED]"
+
+        # Mask PII fields (emails)
+        elif key_lower in PII_FIELDS and isinstance(event_dict[key], str):
+            event_dict[key] = _mask_email(event_dict[key])
+
     return event_dict
 
 

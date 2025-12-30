@@ -12,6 +12,7 @@ import typer
 
 # Import server module to register commands
 from mailreactor.cli import init, server
+from mailreactor.core.plugin_loader import discover_plugins
 from mailreactor.utils.version import get_app_version
 
 # Main CLI app with subcommands
@@ -53,10 +54,29 @@ def main_callback(
     pass
 
 
-# Register commands
+# Discover plugins and apply CLI decorators (Story 3-15.5)
+# This happens at module load so --help shows plugin options
+plugins = discover_plugins(log=False)  # log=False prevents logs during init wizard
+
+# Apply plugin decorators to start command BEFORE registering with app
+# Decorator chaining pattern: Each plugin wraps the function with additional CLI options
+start_func = server.start
+for plugin in plugins.values():
+    start_func = plugin.add_cli_options(start_func)
+
+# Apply plugin decorators to dev command as well (same options needed)
+dev_func = server.dev
+for plugin in plugins.values():
+    dev_func = plugin.add_cli_options(dev_func)
+
+# Register commands with decorated functions
 app.command("init", help="Interactive wizard for email account setup")(init.init_wizard)
-app.command("start")(server.start)
-app.command("dev", help="Start with auto-reload for development")(server.dev)
+app.command("start")(start_func)
+app.command("dev", help="Start with auto-reload for development")(dev_func)
+
+# Register plugin subcommands (e.g., cloud deploy)
+for plugin in plugins.values():
+    plugin.register_cli(app)
 
 
 @app.command()  # type: ignore[misc]

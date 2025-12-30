@@ -13,12 +13,14 @@ authors = [
     {name = "Hans Stockhausen", email = "hc@vst.io"},
 ]
 dependencies = [
-    # Default: Full experience (pipx install mailreactor → mailreactor start works!)
+    # Core dependencies
+    # NOTE: FastAPI/uvicorn will become optional ([rest] extra) in Story 3-31
+    # when webhook-only mode is implemented. For now, they remain core.
     "imapclient>=3.0.0",   # BSD-3 licensed IMAP client (sync, wrapped with executor)
     "aiosmtplib>=3.0.0",   # MIT licensed async SMTP client
-    "fastapi>=0.122.0",    # Modern async web framework
-    "uvicorn[standard]",   # ASGI server
-    "pydantic>=2.0.0",     # Data validation (bundled with FastAPI)
+    "fastapi>=0.122.0",    # Modern async web framework (will be [rest] extra in Story 3-31)
+    "uvicorn[standard]>=0.32.0",   # ASGI server (will be [rest] extra in Story 3-31)
+    "pydantic>=2.0.0",     # Data validation
     "pydantic-settings",   # Environment-based configuration
     "email-validator",     # Pydantic EmailStr validation
     "pyyaml>=6.0.0",       # YAML parsing for providers.yaml and mailreactor.yaml
@@ -26,10 +28,26 @@ dependencies = [
     "typer>=0.20.0",       # CLI framework
     "structlog",           # Structured logging
     "rich",                # Rich console output for logging
-    "httpx>=0.27.0",       # Async HTTP client for Mozilla Autoconfig
+    "httpx>=0.27.0",       # Async HTTP client (webhooks + Mozilla Autoconfig)
 ]
 
 [project.optional-dependencies]
+
+# REST API plugin (FastAPI server)
+rest = [
+    "fastapi>=0.122.0",        # Modern async web framework
+    "uvicorn[standard]>=0.32.0", # ASGI server
+]
+
+# MCP plugin (Model Context Protocol)
+mcp = [
+    "mcp>=1.25.0",  # Model Context Protocol SDK
+]
+
+# Full installation (all plugins)
+all = [
+    "mailreactor[rest,mcp]",
+]
 
 # Development dependencies
 dev = [
