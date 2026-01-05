@@ -12,6 +12,7 @@ import typer
 
 # Import server module to register commands
 from mailreactor.cli import init, server
+from mailreactor.core.plugin_hooks import get_init_hooks
 from mailreactor.core.plugin_loader import discover_plugins
 from mailreactor.utils.version import get_app_version
 
@@ -69,8 +70,14 @@ dev_func = server.dev
 for plugin in plugins.values():
     dev_func = plugin.add_cli_options(dev_func)
 
+# Apply init hook decorators to init command (Story 3-29-5)
+# Init hooks add plugin-specific CLI options (e.g., --no-webhook-validation)
+init_func = init.init_wizard
+for hook in get_init_hooks():
+    init_func = hook.add_cli_options(init_func)
+
 # Register commands with decorated functions
-app.command("init", help="Interactive wizard for email account setup")(init.init_wizard)
+app.command("init", help="Interactive wizard for email account setup")(init_func)
 app.command("start")(start_func)
 app.command("dev", help="Start with auto-reload for development")(dev_func)
 

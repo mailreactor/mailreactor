@@ -186,6 +186,7 @@ def start(
         "--config",
         help="Path to config file (default: mailreactor.yaml in current directory)",
     ),
+    # Plugin options added via decorators are injected into globals() by decorator
 ) -> None:
     """Start Mail Reactor API server.
 
@@ -222,6 +223,7 @@ def dev(
         "--config",
         help="Path to config file (default: mailreactor.yaml in current directory)",
     ),
+    # Plugin options added via decorators are injected into globals() by decorator
 ) -> None:
     """Start development server with auto-reload.
 

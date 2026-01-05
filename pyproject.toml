@@ -24,11 +24,11 @@ dependencies = [
     "pydantic-settings",   # Environment-based configuration
     "email-validator",     # Pydantic EmailStr validation
     "pyyaml>=6.0.0",       # YAML parsing for providers.yaml and mailreactor.yaml
-    "cryptography>=41.0.0", # Fernet encryption + PBKDF2 for password encryption
+    "cryptography>=41.0.0",  # Password encryption (Story 2.5)
     "typer>=0.20.0",       # CLI framework
+    "rich",                # Terminal formatting (for CLI spinners)
     "structlog",           # Structured logging
-    "rich",                # Rich console output for logging
-    "httpx>=0.27.0",       # Async HTTP client (webhooks + Mozilla Autoconfig)
+    "httpx>=0.27.0",       # HTTP client (Mozilla autoconfig, webhook testing - Story 2.2, 3-29-5)
 ]
 
 [project.optional-dependencies]

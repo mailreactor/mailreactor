@@ -36,11 +36,22 @@ from pydantic import EmailStr, TypeAdapter, ValidationError
 from rich.console import Console
 
 from mailreactor.core.config import save_config
+from mailreactor.core.plugin_decorator import get_plugin_parameters
+from mailreactor.core.plugin_hooks import get_init_hooks
 from mailreactor.core.provider_detector import detect_provider, get_provider_hint
 from mailreactor.models.account import AccountConfig, IMAPConfig, ProviderConfig, SMTPConfig
 
 console = Console()
 logger = structlog.get_logger()
+
+# Import plugin hooks to trigger auto-registration (Story 3-29-5)
+# Hooks register themselves via register_init_hook() on import
+try:
+    from mailreactor.plugins.webhooks import init_hook as _webhook_hook  # noqa: F401
+except ImportError:
+    pass  # Webhook plugin not available
+
+# Cloud plugin no longer has init_hook (removed in Story 3-29-5 update)
 
 # Type variable for async function return type
 T = TypeVar("T")
@@ -51,9 +62,11 @@ def init_wizard(
         False, "--no-autoconfig", help="Skip auto-detection, manual config only"
     ),
     no_validation: bool = typer.Option(
-        False, "--no-validation", help="Skip connection validation (offline mode)"
+        False, "--no-validation", help="Skip IMAP/SMTP connection validation (offline mode)"
     ),
     verbose: bool = typer.Option(False, "--verbose", help="Show debug logs (structlog output)"),
+    # Plugin options added via decorators (e.g., no_webhook_validation from WebhookInitHook)
+    # Note: Plugin params are passed via globals() injection by the decorator
 ) -> None:
     """Interactive wizard for email account setup.
 
@@ -173,7 +186,7 @@ def init_wizard(
         # IMAP validation (AC-4)
         if not no_validation:
             # Validate IMAP immediately (early exit on failure per AC-4)
-            with console.status("⠋ Testing IMAP connection..."):
+            with console.status("Testing IMAP connection..."):
                 imap_success, imap_error = _run_async(_validate_imap_connection(imap_config))
 
             if imap_success:
@@ -202,7 +215,7 @@ def init_wizard(
         # SMTP validation (AC-4)
         if not no_validation:
             # Validate SMTP
-            with console.status("⠋ Testing SMTP connection..."):
+            with console.status("Testing SMTP connection..."):
                 smtp_success, smtp_error = _run_async(_validate_smtp_connection(smtp_config))
 
             if smtp_success:
@@ -216,7 +229,51 @@ def init_wizard(
         typer.echo("\nConfiguration cancelled")
         raise typer.Exit(1)
 
+    # Run plugin init hooks (Story 3-29-5: AC-2)
+    # Hooks registered at import time, executed after core config (SMTP validated)
+    # Plugin-added CLI options (e.g., no_webhook_validation) are in local scope
+    plugin_config: dict[str, Any] = {}
+    hooks = get_init_hooks()
+
+    for hook in hooks:
+        try:
+            # Collect plugin CLI options from globals() (injected by decorator)
+            # Use the plugin parameter registry for truly dynamic discovery
+            # No hardcoded parameter names - plugins auto-register via add_cli_option()
+            hook_kwargs = {
+                param: globals()[param] for param in get_plugin_parameters() if param in globals()
+            }
+
+            hook_result = hook.prompt_config(console, **hook_kwargs)
+
+            # Detect config conflicts (AC-6)
+            for key in hook_result.keys():
+                if key in plugin_config:
+                    logger.warning(
+                        "plugin_config_conflict",
+                        key=key,
+                        hook=type(hook).__name__,
+                        action="overwriting",
+                    )
+
+            # Merge hook result into plugin config
+            plugin_config.update(hook_result)
+
+        except typer.Exit:
+            # Re-raise exit (hook failed validation, want to exit)
+            raise
+        except Exception as e:
+            # Non-blocking: Log error and continue (AC-6)
+            logger.error(
+                "plugin_hook_failed",
+                hook=type(hook).__name__,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+            console.print(f"\n⚠ Plugin hook failed: {type(hook).__name__}")
+
     # Master password prompt for encryption (Story 2.5.1)
+    typer.echo()
     typer.echo("Choose a master password to encrypt your credentials.")
 
     # Check for MAILREACTOR_PASSWORD env var (AC-2)
@@ -262,10 +319,11 @@ def init_wizard(
     )
 
     try:
-        # Save config with encryption (AC-5)
+        # Save config with encryption + plugin sections (Story 3-29-5: AC-6)
         # This encrypts passwords and writes YAML with !encrypted tags
         # File permissions 0600 set automatically by save_config()
-        save_config(config_path, account_config, master_password)
+        # Plugin config merged via extra_sections parameter
+        save_config(config_path, account_config, master_password, extra_sections=plugin_config)
 
         # Success message (AC-1, AC-2)
         typer.echo()
@@ -273,11 +331,14 @@ def init_wizard(
         typer.echo()
         typer.echo("To start the server:")
         typer.echo("  mailreactor start")
+        typer.echo()
+        typer.echo("To deploy to cloud:")
+        typer.echo("  mailreactor cloud deploy")
 
         # Show password reminder only if NOT using env var
         if not (env_password and not user_input):
             typer.echo()
-            typer.echo("The password will be required at startup.")
+            typer.echo("The master password will be required at startup.")
             typer.echo(
                 "Enter it interactively or set the MAILREACTOR_PASSWORD environment variable."
             )

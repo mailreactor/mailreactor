@@ -129,8 +129,13 @@ def encrypted_representer(dumper: yaml.Dumper, data: EncryptedString) -> yaml.No
 yaml.add_representer(EncryptedString, encrypted_representer)
 
 
-def save_config(path: Path, config: AccountConfig, master_password: str) -> None:
-    """Save AccountConfig to YAML with encrypted passwords.
+def save_config(
+    path: Path,
+    config: AccountConfig,
+    master_password: str,
+    extra_sections: dict[str, Any] | None = None,
+) -> None:
+    """Save AccountConfig to YAML with encrypted passwords and optional plugin sections.
 
     Encrypts IMAP and SMTP passwords using the master password and writes
     a project-local mailreactor.yaml file. Each password gets a unique
@@ -140,6 +145,8 @@ def save_config(path: Path, config: AccountConfig, master_password: str) -> None
         path: Path to write config file
         config: Account configuration to save
         master_password: Password for encrypting credentials
+        extra_sections: Optional dict of additional config sections from plugins
+                       (e.g., {"webhooks": {"message_received": "http://..."}})
 
     Example:
         >>> from mailreactor.models.account import AccountConfig, IMAPConfig, SMTPConfig  # doctest: +SKIP
@@ -149,6 +156,13 @@ def save_config(path: Path, config: AccountConfig, master_password: str) -> None
         ...     smtp=SMTPConfig(host="smtp.gmail.com", username="test@gmail.com", password="secret")
         ... )
         >>> save_config(Path("mailreactor.yaml"), config, "master")  # doctest: +SKIP
+        >>> # With plugin sections (Story 3-29-5)
+        >>> save_config(
+        ...     Path("mailreactor.yaml"),
+        ...     config,
+        ...     "master",
+        ...     extra_sections={"webhooks": {"message_received": "http://localhost:3000/webhook"}}
+        ... )  # doctest: +SKIP
     """
     # Encrypt passwords with unique salts
     imap_encrypted = EncryptedString(encrypt(config.imap.password, master_password))
@@ -172,6 +186,10 @@ def save_config(path: Path, config: AccountConfig, master_password: str) -> None
             "password": smtp_encrypted,
         },
     }
+
+    # Merge plugin sections if provided (Story 3-29-5)
+    if extra_sections:
+        yaml_data.update(extra_sections)
 
     # Write to file
     with path.open("w") as f:
